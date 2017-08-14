@@ -18,6 +18,7 @@ package cmd
 
 import (
 	"bytes"
+	"os"
 	"testing"
 )
 
@@ -124,26 +125,54 @@ func TestErasureDecode(t *testing.T) {
 			// Data block size.
 			blockSize := len(data)
 
-			// Generates encoded data based on type of testCase function.
-			encodedData := testCase.enFn(data, dataBlocks, parityBlocks)
+			// Test decoder for just the missing data blocks
+			{
+				// Generates encoded data based on type of testCase function.
+				encodedData := testCase.enFn(data, dataBlocks, parityBlocks)
 
-			// Decodes the data.
-			err := decodeData(encodedData, dataBlocks, parityBlocks)
-			if err != nil && testCase.shouldPass {
-				t.Errorf("Test %d: Expected to pass by failed instead with %s", i+1, err)
+				// Decodes the data.
+				err := decodeMissingData(encodedData, dataBlocks, parityBlocks)
+				if err != nil && testCase.shouldPass {
+					t.Errorf("Test %d: Expected to pass by failed instead with %s", i+1, err)
+				}
+
+				// Proceed to extract the data blocks.
+				decodedDataWriter := new(bytes.Buffer)
+				_, err = writeDataBlocks(decodedDataWriter, encodedData, dataBlocks, 0, int64(blockSize))
+				if err != nil && testCase.shouldPass {
+					t.Errorf("Test %d: Expected to pass by failed instead with %s", i+1, err)
+				}
+
+				// Validate if decoded data is what we expected.
+				if bytes.Equal(decodedDataWriter.Bytes(), data) != testCase.shouldPass {
+					err := errUnexpected
+					t.Errorf("Test %d: Expected to pass by failed instead %s", i+1, err)
+				}
 			}
 
-			// Proceed to extract the data blocks.
-			decodedDataWriter := new(bytes.Buffer)
-			_, err = writeDataBlocks(decodedDataWriter, encodedData, dataBlocks, 0, int64(blockSize))
-			if err != nil && testCase.shouldPass {
-				t.Errorf("Test %d: Expected to pass by failed instead with %s", i+1, err)
-			}
+			// Test decoder for all missing data and parity blocks
+			{
+				// Generates encoded data based on type of testCase function.
+				encodedData := testCase.enFn(data, dataBlocks, parityBlocks)
 
-			// Validate if decoded data is what we expected.
-			if bytes.Equal(decodedDataWriter.Bytes(), data) != testCase.shouldPass {
-				err := errUnexpected
-				t.Errorf("Test %d: Expected to pass by failed instead %s", i+1, err)
+				// Decodes the data.
+				err := decodeDataAndParity(encodedData, dataBlocks, parityBlocks)
+				if err != nil && testCase.shouldPass {
+					t.Errorf("Test %d: Expected to pass by failed instead with %s", i+1, err)
+				}
+
+				// Proceed to extract the data blocks.
+				decodedDataWriter := new(bytes.Buffer)
+				_, err = writeDataBlocks(decodedDataWriter, encodedData, dataBlocks, 0, int64(blockSize))
+				if err != nil && testCase.shouldPass {
+					t.Errorf("Test %d: Expected to pass by failed instead with %s", i+1, err)
+				}
+
+				// Validate if decoded data is what we expected.
+				if bytes.Equal(decodedDataWriter.Bytes(), data) != testCase.shouldPass {
+					err := errUnexpected
+					t.Errorf("Test %d: Expected to pass by failed instead %s", i+1, err)
+				}
 			}
 		}
 	}
@@ -161,7 +190,7 @@ type erasureTestSetup struct {
 // Removes the temporary disk directories.
 func (e erasureTestSetup) Remove() {
 	for _, path := range e.diskPaths {
-		removeAll(path)
+		os.RemoveAll(path)
 	}
 }
 
