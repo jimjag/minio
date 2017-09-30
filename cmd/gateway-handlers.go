@@ -603,11 +603,7 @@ func (api gatewayAPIHandlers) PutBucketHandler(w http.ResponseWriter, r *http.Re
 	}
 
 	// PutBucket does not have any bucket action.
-	s3Error := checkRequestAuthType(r, "", "", globalMinioDefaultRegion)
-	if s3Error == ErrInvalidRegion {
-		// Clients like boto3 send putBucket() call signed with region that is configured.
-		s3Error = checkRequestAuthType(r, "", "", serverConfig.GetRegion())
-	}
+	s3Error := checkRequestAuthType(r, "", "", serverConfig.GetRegion())
 	if s3Error != ErrNone {
 		writeErrorResponse(w, s3Error, r.URL)
 		return
@@ -720,6 +716,13 @@ func (api gatewayAPIHandlers) ListObjectsV1Handler(w http.ResponseWriter, r *htt
 	// gateway backends.
 	prefix, marker, delimiter, maxKeys, _ := getListObjectsV1Args(r.URL.Query())
 
+	// Validate the maxKeys lowerbound. When maxKeys > 1000, S3 returns 1000 but
+	// does not throw an error.
+	if maxKeys < 0 {
+		writeErrorResponse(w, ErrInvalidMaxKeys, r.URL)
+		return
+	}
+
 	listObjects := objectAPI.ListObjects
 	if reqAuthType == authTypeAnonymous {
 		listObjects = objectAPI.AnonListObjects
@@ -807,7 +810,7 @@ func (api gatewayAPIHandlers) ListObjectsV2Handler(w http.ResponseWriter, r *htt
 	// Inititate a list objects operation based on the input params.
 	// On success would return back ListObjectsV2Info object to be
 	// serialized as XML and sent as S3 compatible response body.
-	listObjectsV2Info, err := listObjectsV2(bucket, prefix, token, fetchOwner, delimiter, maxKeys)
+	listObjectsV2Info, err := listObjectsV2(bucket, prefix, token, delimiter, maxKeys, fetchOwner, startAfter)
 	if err != nil {
 		errorIf(err, "Unable to list objects. Args to listObjectsV2 are bucket=%s, prefix=%s, token=%s, delimiter=%s", bucket, prefix, token, delimiter)
 		writeErrorResponse(w, toAPIErrorCode(err), r.URL)

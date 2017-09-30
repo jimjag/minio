@@ -562,8 +562,7 @@ func (l *gcsGateway) ListObjects(bucket string, prefix string, marker string, de
 }
 
 // ListObjectsV2 - lists all blobs in GCS bucket filtered by prefix
-func (l *gcsGateway) ListObjectsV2(bucket, prefix, continuationToken string, fetchOwner bool,
-	delimiter string, maxKeys int) (ListObjectsV2Info, error) {
+func (l *gcsGateway) ListObjectsV2(bucket, prefix, continuationToken, delimiter string, maxKeys int, fetchOwner bool, startAfter string) (ListObjectsV2Info, error) {
 
 	it := l.client.Bucket(bucket).Objects(l.ctx, &storage.Query{
 		Delimiter: delimiter,
@@ -762,7 +761,10 @@ func (l *gcsGateway) CopyObject(srcBucket string, srcObject string, destBucket s
 	src := l.client.Bucket(srcBucket).Object(srcObject)
 	dst := l.client.Bucket(destBucket).Object(destObject)
 
-	attrs, err := dst.CopierFrom(src).Run(l.ctx)
+	copier := dst.CopierFrom(src)
+	copier.ObjectAttrs.Metadata = metadata
+
+	attrs, err := copier.Run(l.ctx)
 	if err != nil {
 		return ObjectInfo{}, gcsToObjectError(traceError(err), destBucket, destObject)
 	}
