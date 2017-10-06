@@ -1,5 +1,7 @@
+// +build linux
+
 /*
- * Minio Cloud Storage, (C) 2015 Minio, Inc.
+ * Minio Cloud Storage, (C) 2017 Minio, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,18 +16,23 @@
  * limitations under the License.
  */
 
-package disk
+package sys
 
-// Info stat fs struct is container which holds following values
-// Total - total size of the volume / disk
-// Free - free size of the volume / disk
-// Files - total inodes available
-// Ffree - free inodes available
-// FSType - file system type
-type Info struct {
-	Total  uint64
-	Free   uint64
-	Files  uint64
-	Ffree  uint64
-	FSType string
+import (
+	"io/ioutil"
+	"strconv"
+	"strings"
+)
+
+// GetMaxThreads returns the maximum number of threads that the system can create.
+func GetMaxThreads() (int, error) {
+	sysMaxThreadsStr, err := ioutil.ReadFile("/proc/sys/kernel/threads-max")
+	if err != nil {
+		return 0, err
+	}
+	sysMaxThreads, err := strconv.Atoi(strings.TrimSpace(string(sysMaxThreadsStr)))
+	if err != nil {
+		return 0, err
+	}
+	return sysMaxThreads, nil
 }
