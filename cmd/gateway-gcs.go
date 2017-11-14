@@ -39,6 +39,7 @@ import (
 	cloudresourcemanager "google.golang.org/api/cloudresourcemanager/v1"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/api/iterator"
+	"google.golang.org/api/option"
 )
 
 var (
@@ -381,7 +382,9 @@ func newGCSGatewayLayer(projectID string) (GatewayLayer, error) {
 	}
 
 	// Initialize a GCS client.
-	client, err := storage.NewClient(ctx)
+	// Send user-agent in this format for Google to obtain usage insights while participating in the
+	// Google Cloud Technology Partners (https://cloud.google.com/partners/)
+	client, err := storage.NewClient(ctx, option.WithUserAgent(fmt.Sprintf("Minio/%s (GPN:Minio;)", Version)))
 	if err != nil {
 		return nil, err
 	}
@@ -1012,7 +1015,7 @@ func (l *gcsGateway) AbortMultipartUpload(bucket string, key string, uploadID st
 // to the number of components you can compose per second. This rate counts both the
 // components being appended to a composite object as well as the components being
 // copied when the composite object of which they are a part is copied.
-func (l *gcsGateway) CompleteMultipartUpload(bucket string, key string, uploadID string, uploadedParts []completePart) (ObjectInfo, error) {
+func (l *gcsGateway) CompleteMultipartUpload(bucket string, key string, uploadID string, uploadedParts []CompletePart) (ObjectInfo, error) {
 	meta := gcsMultipartMetaName(uploadID)
 	object := l.client.Bucket(bucket).Object(meta)
 
