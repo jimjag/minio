@@ -267,10 +267,10 @@
 			"revisionTime": "2016-10-16T15:41:25Z"
 		},
 		{
-			"checksumSHA1": "sGHmZAWf2bzBFBwL8HPg4u9aJAA=",
+			"checksumSHA1": "Nlhq327ZGeEh1gkPEBNPJKFlwds=",
 			"path": "github.com/klauspost/reedsolomon",
-			"revision": "ddcafc661e43ab1786575c0fc4b5b935b121de05",
-			"revisionTime": "2017-09-20T19:08:25Z"
+			"revision": "e52c150f961e65ab9538bf1276b33bf469f919d8",
+			"revisionTime": "2017-11-18T15:17:31Z"
 		},
 		{
 			"checksumSHA1": "dNYxHiBLalTqluak2/Z8c3RsSEM=",
@@ -493,24 +493,6 @@
 			"path": "go.uber.org/atomic",
 			"revision": "3b8db5e93c4c02efbc313e17b2e796b0914a01fb",
 			"revisionTime": "2016-12-15T19:56:52Z"
-		},
-		{
-			"checksumSHA1": "CvMkf3KUUGUVHibg6G/zI7XtVbM=",
-			"path": "golang.org/x/crypto/chacha20poly1305",
-			"revision": "81e90905daefcd6fd217b62423c0908922eadb30",
-			"revisionTime": "2017-08-25T20:24:07Z"
-		},
-		{
-			"checksumSHA1": "8f1lWFSOLu7O6Jqk/e+ydH1yoms=",
-			"path": "golang.org/x/crypto/chacha20poly1305/internal/chacha20",
-			"revision": "81e90905daefcd6fd217b62423c0908922eadb30",
-			"revisionTime": "2017-08-25T20:24:07Z"
-		},
-		{
-			"checksumSHA1": "kVKE0OX1Xdw5mG7XKT86DLLKE2I=",
-			"path": "golang.org/x/crypto/poly1305",
-			"revision": "81e90905daefcd6fd217b62423c0908922eadb30",
-			"revisionTime": "2017-08-25T20:24:07Z"
 		},
 		{
 			"path": "golang.org/x/net/context",
