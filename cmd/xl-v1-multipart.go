@@ -272,8 +272,8 @@ func commitXLMetadata(disks []StorageAPI, srcBucket, srcPrefix, dstBucket, dstPr
 	return evalDisks(disks, mErrs), err
 }
 
-// listMultipartUploads - lists all multipart uploads.
-func (xl xlObjects) listMultipartUploads(bucket, prefix, keyMarker, uploadIDMarker, delimiter string, maxUploads int) (lmi ListMultipartsInfo, e error) {
+// listMultipartUploadsCleanup - lists all multipart uploads. Called by xl.cleanupStaleMultipartUpload()
+func (xl xlObjects) listMultipartUploadsCleanup(bucket, prefix, keyMarker, uploadIDMarker, delimiter string, maxUploads int) (lmi ListMultipartsInfo, e error) {
 	result := ListMultipartsInfo{
 		IsTruncated: true,
 		MaxUploads:  maxUploads,
@@ -440,21 +440,54 @@ func (xl xlObjects) listMultipartUploads(bucket, prefix, keyMarker, uploadIDMark
 	return result, nil
 }
 
-// ListMultipartUploads - lists all the pending multipart uploads on a
-// bucket. Additionally takes 'prefix, keyMarker, uploadIDmarker and a
-// delimiter' which allows us to list uploads match a particular
-// prefix or lexically starting from 'keyMarker' or delimiting the
-// output to get a directory like listing.
+// ListMultipartUploads - lists all the pending multipart
+// uploads for a particular object in a bucket.
 //
-// Implements S3 compatible ListMultipartUploads API. The resulting
-// ListMultipartsInfo structure is unmarshalled directly into XML and
-// replied back to the client.
-func (xl xlObjects) ListMultipartUploads(bucket, prefix, keyMarker, uploadIDMarker, delimiter string, maxUploads int) (lmi ListMultipartsInfo, e error) {
-	if err := checkListMultipartArgs(bucket, prefix, keyMarker, uploadIDMarker, delimiter, xl); err != nil {
+// Implements minimal S3 compatible ListMultipartUploads API. We do
+// not support prefix based listing, this is a deliberate attempt
+// towards simplification of multipart APIs.
+// The resulting ListMultipartsInfo structure is unmarshalled directly as XML.
+func (xl xlObjects) ListMultipartUploads(bucket, object, keyMarker, uploadIDMarker, delimiter string, maxUploads int) (lmi ListMultipartsInfo, e error) {
+	if err := checkListMultipartArgs(bucket, object, keyMarker, uploadIDMarker, delimiter, xl); err != nil {
 		return lmi, err
 	}
 
-	return xl.listMultipartUploads(bucket, prefix, keyMarker, uploadIDMarker, delimiter, maxUploads)
+	result := ListMultipartsInfo{}
+
+	result.IsTruncated = true
+	result.MaxUploads = maxUploads
+	result.KeyMarker = keyMarker
+	result.Prefix = object
+	result.Delimiter = delimiter
+
+	for _, disk := range xl.getLoadBalancedDisks() {
+		if disk == nil {
+			continue
+		}
+
+		uploads, _, err := listMultipartUploadIDs(bucket, object, uploadIDMarker, maxUploads, disk)
+		if err != nil {
+			return lmi, err
+		}
+
+		result.NextKeyMarker = object
+		// Loop through all the received uploads fill in the multiparts result.
+		for _, upload := range uploads {
+			uploadID := upload.UploadID
+			result.Uploads = append(result.Uploads, upload)
+			result.NextUploadIDMarker = uploadID
+		}
+
+		result.IsTruncated = len(uploads) == maxUploads
+
+		if !result.IsTruncated {
+			result.NextKeyMarker = ""
+			result.NextUploadIDMarker = ""
+		}
+		break
+	}
+
+	return result, nil
 }
 
 // newMultipartUpload - wrapper for initializing a new multipart
