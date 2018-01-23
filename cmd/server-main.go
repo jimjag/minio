@@ -186,12 +186,15 @@ func serverMain(ctx *cli.Context) {
 
 	// Set nodes for dsync for distributed setup.
 	if globalIsDistXL {
-		clnts, myNode := newDsyncNodes(globalEndpoints)
-		fatalIf(dsync.Init(clnts, myNode), "Unable to initialize distributed locking clients")
+		globalDsync, err = dsync.New(newDsyncNodes(globalEndpoints))
+		fatalIf(err, "Unable to initialize distributed locking clients")
 	}
 
 	// Initialize name space lock.
 	initNSLock(globalIsDistXL)
+
+	// Init global heal state
+	initAllHealState(globalIsXL)
 
 	// Configure server.
 	var handler http.Handler
