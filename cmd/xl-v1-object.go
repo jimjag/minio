@@ -79,7 +79,7 @@ func (xl xlObjects) prepareFile(bucket, object string, size int64, onlineDisks [
 // CopyObject - copy object source object to destination object.
 // if source object and destination object are same we only
 // update metadata.
-func (xl xlObjects) CopyObject(srcBucket, srcObject, dstBucket, dstObject string, metadata map[string]string, srcEtag string) (oi ObjectInfo, e error) {
+func (xl xlObjects) CopyObject(srcBucket, srcObject, dstBucket, dstObject string, srcInfo ObjectInfo) (oi ObjectInfo, e error) {
 	cpSrcDstSame := srcBucket == dstBucket && srcObject == dstObject
 	// Hold write lock on destination since in both cases
 	// - if source and destination are same
@@ -101,16 +101,6 @@ func (xl xlObjects) CopyObject(srcBucket, srcObject, dstBucket, dstObject string
 			return oi, err
 		}
 		defer objectSRLock.RUnlock()
-	}
-
-	if srcEtag != "" {
-		objInfo, perr := xl.getObjectInfo(srcBucket, srcObject)
-		if perr != nil {
-			return oi, toObjectErr(perr, srcBucket, srcObject)
-		}
-		if objInfo.ETag != srcEtag {
-			return oi, toObjectErr(errors.Trace(InvalidETag{}), srcBucket, srcObject)
-		}
 	}
 
 	// Read metadata associated with the object from all disks.
@@ -144,7 +134,7 @@ func (xl xlObjects) CopyObject(srcBucket, srcObject, dstBucket, dstObject string
 	// Check if this request is only metadata update.
 	cpMetadataOnly := isStringEqual(pathJoin(srcBucket, srcObject), pathJoin(dstBucket, dstObject))
 	if cpMetadataOnly {
-		xlMeta.Meta = metadata
+		xlMeta.Meta = srcInfo.UserDefined
 		partsMetadata := make([]xlMetaV1, len(xl.getDisks()))
 		// Update `xl.json` content on each disks.
 		for index := range partsMetadata {
@@ -169,7 +159,7 @@ func (xl xlObjects) CopyObject(srcBucket, srcObject, dstBucket, dstObject string
 
 	go func() {
 		var startOffset int64 // Read the whole file.
-		if gerr := xl.getObject(srcBucket, srcObject, startOffset, length, pipeWriter, ""); gerr != nil {
+		if gerr := xl.getObject(srcBucket, srcObject, startOffset, length, pipeWriter, srcInfo.ETag); gerr != nil {
 			errorIf(gerr, "Unable to read %s of the object `%s/%s`.", srcBucket, srcObject)
 			pipeWriter.CloseWithError(toObjectErr(gerr, srcBucket, srcObject))
 			return
@@ -182,7 +172,7 @@ func (xl xlObjects) CopyObject(srcBucket, srcObject, dstBucket, dstObject string
 		return oi, toObjectErr(errors.Trace(err), dstBucket, dstObject)
 	}
 
-	objInfo, err := xl.putObject(dstBucket, dstObject, hashReader, metadata)
+	objInfo, err := xl.putObject(dstBucket, dstObject, hashReader, srcInfo.UserDefined)
 	if err != nil {
 		return oi, toObjectErr(err, dstBucket, dstObject)
 	}
@@ -777,8 +767,11 @@ func (xl xlObjects) deleteObject(bucket, object string) error {
 
 	var writeQuorum int
 	var err error
+
+	isDir := hasSuffix(object, slashSeparator)
+
 	// If its a directory request, no need to read metadata.
-	if !hasSuffix(object, slashSeparator) {
+	if !isDir {
 		// Read metadata associated with the object from all disks.
 		metaArr, errs := readAllXLMetadata(xl.getDisks(), bucket, object)
 
@@ -800,13 +793,20 @@ func (xl xlObjects) deleteObject(bucket, object string) error {
 			continue
 		}
 		wg.Add(1)
-		go func(index int, disk StorageAPI) {
+		go func(index int, disk StorageAPI, isDir bool) {
 			defer wg.Done()
-			err := cleanupDir(disk, bucket, object)
+			var err error
+			if isDir {
+				// DeleteFile() simply tries to remove a directory
+				// and will succeed only if that directory is empty.
+				err = disk.DeleteFile(bucket, object)
+			} else {
+				err = cleanupDir(disk, bucket, object)
+			}
 			if err != nil && errors.Cause(err) != errVolumeNotFound {
 				dErrs[index] = err
 			}
-		}(index, disk)
+		}(index, disk, isDir)
 	}
 
 	// Wait for all routines to finish.
