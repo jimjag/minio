@@ -1,5 +1,5 @@
 /*
- * Minio Cloud Storage, (C) 2016, 2017 Minio, Inc.
+ * Minio Cloud Storage, (C) 2016, 2017, 2018 Minio, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -89,7 +90,11 @@ func (s *adminCmd) ReInitFormat(args *ReInitFormatArgs, reply *AuthRPCReply) err
 	if err := args.IsAuthenticated(); err != nil {
 		return err
 	}
-	_, err := newObjectLayerFn().HealFormat(args.DryRun)
+	objectAPI := newObjectLayerFn()
+	if objectAPI == nil {
+		return errServerNotInitialized
+	}
+	_, err := objectAPI.HealFormat(context.Background(), args.DryRun)
 	return err
 }
 
@@ -118,12 +123,7 @@ func (s *adminCmd) ServerInfoData(args *AuthRPCArgs, reply *ServerInfoDataReply)
 	if objLayer == nil {
 		return errServerNotInitialized
 	}
-	storageInfo := objLayer.StorageInfo()
-
-	var arns []string
-	for queueArn := range globalEventNotifier.GetAllExternalTargets() {
-		arns = append(arns, queueArn)
-	}
+	storageInfo := objLayer.StorageInfo(context.Background())
 
 	reply.ServerInfoData = ServerInfoData{
 		Properties: ServerProperties{
@@ -131,7 +131,7 @@ func (s *adminCmd) ServerInfoData(args *AuthRPCArgs, reply *ServerInfoDataReply)
 			Version:  Version,
 			CommitID: CommitID,
 			Region:   globalServerConfig.GetRegion(),
-			SQSARN:   arns,
+			SQSARN:   globalNotificationSys.GetARNList(),
 		},
 		StorageInfo: storageInfo,
 		ConnStats:   globalConnStats.toServerConnStats(),

@@ -1,5 +1,5 @@
 /*
- * Minio Cloud Storage, (C) 2015, 2016, 2017 Minio, Inc.
+ * Minio Cloud Storage, (C) 2015, 2016, 2017, 2018 Minio, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 package cmd
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/xml"
 	"io"
@@ -33,6 +34,7 @@ import (
 	"github.com/minio/minio-go/pkg/policy"
 	"github.com/minio/minio-go/pkg/set"
 	"github.com/minio/minio/pkg/errors"
+	"github.com/minio/minio/pkg/event"
 	"github.com/minio/minio/pkg/hash"
 )
 
@@ -57,7 +59,7 @@ func enforceBucketPolicy(bucket, action, resource, referer, sourceIP string, que
 	}
 
 	// Fetch bucket policy, if policy is not set return access denied.
-	p, err := objAPI.GetBucketPolicy(bucket)
+	p, err := objAPI.GetBucketPolicy(context.Background(), bucket)
 	if err != nil {
 		return ErrAccessDenied
 	}
@@ -90,8 +92,7 @@ func enforceBucketPolicy(bucket, action, resource, referer, sourceIP string, que
 
 // Check if the action is allowed on the bucket/prefix.
 func isBucketActionAllowed(action, bucket, prefix string, objectAPI ObjectLayer) bool {
-
-	bp, err := objectAPI.GetBucketPolicy(bucket)
+	bp, err := objectAPI.GetBucketPolicy(context.Background(), bucket)
 	if err != nil {
 		return false
 	}
@@ -108,6 +109,8 @@ func isBucketActionAllowed(action, bucket, prefix string, objectAPI ObjectLayer)
 // -------------------------
 // This operation returns bucket location.
 func (api objectAPIHandlers) GetBucketLocationHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := newContext(r, "GetBucketLocation")
+
 	vars := mux.Vars(r)
 	bucket := vars["bucket"]
 
@@ -134,7 +137,7 @@ func (api objectAPIHandlers) GetBucketLocationHandler(w http.ResponseWriter, r *
 	}
 	defer bucketLock.RUnlock()
 
-	if _, err := objectAPI.GetBucketInfo(bucket); err != nil {
+	if _, err := objectAPI.GetBucketInfo(ctx, bucket); err != nil {
 		writeErrorResponse(w, toAPIErrorCode(err), r.URL)
 		return
 	}
@@ -162,6 +165,8 @@ func (api objectAPIHandlers) GetBucketLocationHandler(w http.ResponseWriter, r *
 // uploads in the response.
 //
 func (api objectAPIHandlers) ListMultipartUploadsHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := newContext(r, "ListMultipartUploads")
+
 	vars := mux.Vars(r)
 	bucket := vars["bucket"]
 
@@ -189,7 +194,7 @@ func (api objectAPIHandlers) ListMultipartUploadsHandler(w http.ResponseWriter, 
 		}
 	}
 
-	listMultipartsInfo, err := objectAPI.ListMultipartUploads(bucket, prefix, keyMarker, uploadIDMarker, delimiter, maxUploads)
+	listMultipartsInfo, err := objectAPI.ListMultipartUploads(ctx, bucket, prefix, keyMarker, uploadIDMarker, delimiter, maxUploads)
 	if err != nil {
 		writeErrorResponse(w, toAPIErrorCode(err), r.URL)
 		return
@@ -207,6 +212,8 @@ func (api objectAPIHandlers) ListMultipartUploadsHandler(w http.ResponseWriter, 
 // This implementation of the GET operation returns a list of all buckets
 // owned by the authenticated sender of the request.
 func (api objectAPIHandlers) ListBucketsHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := newContext(r, "ListBuckets")
+
 	objectAPI := api.ObjectAPI()
 	if objectAPI == nil {
 		writeErrorResponse(w, ErrServerNotInitialized, r.URL)
@@ -224,7 +231,7 @@ func (api objectAPIHandlers) ListBucketsHandler(w http.ResponseWriter, r *http.R
 		return
 	}
 	// Invoke the list buckets.
-	bucketsInfo, err := objectAPI.ListBuckets()
+	bucketsInfo, err := objectAPI.ListBuckets(ctx)
 	if err != nil {
 		writeErrorResponse(w, toAPIErrorCode(err), r.URL)
 		return
@@ -240,6 +247,8 @@ func (api objectAPIHandlers) ListBucketsHandler(w http.ResponseWriter, r *http.R
 
 // DeleteMultipleObjectsHandler - deletes multiple objects.
 func (api objectAPIHandlers) DeleteMultipleObjectsHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := newContext(r, "DeleteMultipleObjects")
+
 	vars := mux.Vars(r)
 	bucket := vars["bucket"]
 
@@ -308,7 +317,7 @@ func (api objectAPIHandlers) DeleteMultipleObjectsHandler(w http.ResponseWriter,
 				}
 				return
 			}
-			dErr := objectAPI.DeleteObject(bucket, obj.ObjectName)
+			dErr := objectAPI.DeleteObject(ctx, bucket, obj.ObjectName)
 			if dErr != nil {
 				dErrs[i] = dErr
 			}
@@ -356,10 +365,10 @@ func (api objectAPIHandlers) DeleteMultipleObjectsHandler(w http.ResponseWriter,
 
 	// Notify deleted event for objects.
 	for _, dobj := range deletedObjects {
-		eventNotify(eventData{
-			Type:   ObjectRemovedDelete,
-			Bucket: bucket,
-			ObjInfo: ObjectInfo{
+		sendEvent(eventArgs{
+			EventName:  event.ObjectRemovedDelete,
+			BucketName: bucket,
+			Object: ObjectInfo{
 				Name: dobj.ObjectName,
 			},
 			ReqParams: extractReqParams(r),
@@ -374,6 +383,8 @@ func (api objectAPIHandlers) DeleteMultipleObjectsHandler(w http.ResponseWriter,
 // ----------
 // This implementation of the PUT operation creates a new bucket for authenticated request
 func (api objectAPIHandlers) PutBucketHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := newContext(r, "PutBucket")
+
 	objectAPI := api.ObjectAPI()
 	if objectAPI == nil {
 		writeErrorResponse(w, ErrServerNotInitialized, r.URL)
@@ -412,7 +423,7 @@ func (api objectAPIHandlers) PutBucketHandler(w http.ResponseWriter, r *http.Req
 	defer bucketLock.Unlock()
 
 	// Proceed to creating a bucket.
-	err := objectAPI.MakeBucketWithLocation(bucket, location)
+	err := objectAPI.MakeBucketWithLocation(ctx, bucket, location)
 	if err != nil {
 		writeErrorResponse(w, toAPIErrorCode(err), r.URL)
 		return
@@ -429,6 +440,8 @@ func (api objectAPIHandlers) PutBucketHandler(w http.ResponseWriter, r *http.Req
 // This implementation of the POST operation handles object creation with a specified
 // signature policy in multipart/form-data
 func (api objectAPIHandlers) PostPolicyBucketHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := newContext(r, "PostPolicyBucket")
+
 	objectAPI := api.ObjectAPI()
 	if objectAPI == nil {
 		writeErrorResponse(w, ErrServerNotInitialized, r.URL)
@@ -589,7 +602,7 @@ func (api objectAPIHandlers) PostPolicyBucketHandler(w http.ResponseWriter, r *h
 		}
 	}
 
-	objInfo, err := objectAPI.PutObject(bucket, object, hashReader, metadata)
+	objInfo, err := objectAPI.PutObject(ctx, bucket, object, hashReader, metadata)
 	if err != nil {
 		writeErrorResponse(w, toAPIErrorCode(err), r.URL)
 		return
@@ -606,14 +619,14 @@ func (api objectAPIHandlers) PostPolicyBucketHandler(w http.ResponseWriter, r *h
 	}
 
 	// Notify object created event.
-	defer eventNotify(eventData{
-		Type:      ObjectCreatedPost,
-		Bucket:    objInfo.Bucket,
-		ObjInfo:   objInfo,
-		ReqParams: extractReqParams(r),
-		UserAgent: r.UserAgent(),
-		Host:      host,
-		Port:      port,
+	defer sendEvent(eventArgs{
+		EventName:  event.ObjectCreatedPost,
+		BucketName: objInfo.Bucket,
+		Object:     objInfo,
+		ReqParams:  extractReqParams(r),
+		UserAgent:  r.UserAgent(),
+		Host:       host,
+		Port:       port,
 	})
 
 	if successRedirect != "" {
@@ -647,6 +660,8 @@ func (api objectAPIHandlers) PostPolicyBucketHandler(w http.ResponseWriter, r *h
 // have permission to access it. Otherwise, the operation might
 // return responses such as 404 Not Found and 403 Forbidden.
 func (api objectAPIHandlers) HeadBucketHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := newContext(r, "HeadBucket")
+
 	vars := mux.Vars(r)
 	bucket := vars["bucket"]
 
@@ -661,7 +676,7 @@ func (api objectAPIHandlers) HeadBucketHandler(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	if _, err := objectAPI.GetBucketInfo(bucket); err != nil {
+	if _, err := objectAPI.GetBucketInfo(ctx, bucket); err != nil {
 		writeErrorResponseHeadersOnly(w, toAPIErrorCode(err))
 		return
 	}
@@ -671,6 +686,8 @@ func (api objectAPIHandlers) HeadBucketHandler(w http.ResponseWriter, r *http.Re
 
 // DeleteBucketHandler - Delete bucket
 func (api objectAPIHandlers) DeleteBucketHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := newContext(r, "DeleteBucket")
+
 	objectAPI := api.ObjectAPI()
 	if objectAPI == nil {
 		writeErrorResponse(w, ErrServerNotInitialized, r.URL)
@@ -687,9 +704,19 @@ func (api objectAPIHandlers) DeleteBucketHandler(w http.ResponseWriter, r *http.
 	bucket := vars["bucket"]
 
 	// Attempt to delete bucket.
-	if err := objectAPI.DeleteBucket(bucket); err != nil {
+	if err := objectAPI.DeleteBucket(ctx, bucket); err != nil {
 		writeErrorResponse(w, toAPIErrorCode(err), r.URL)
 		return
+	}
+
+	// Notify all peers (including self) to update in-memory state
+	for addr, err := range globalNotificationSys.UpdateBucketPolicy(bucket) {
+		errorIf(err, "unable to update policy change in remote peer %v", addr)
+	}
+
+	globalNotificationSys.RemoveNotification(bucket)
+	for addr, err := range globalNotificationSys.DeleteBucket(bucket) {
+		errorIf(err, "unable to delete bucket in remote peer %v", addr)
 	}
 
 	// Write success response.

@@ -1,5 +1,5 @@
 /*
- * Minio Cloud Storage, (C) 2015, 2016, 2017 Minio, Inc.
+ * Minio Cloud Storage, (C) 2015, 2016, 2017, 2018 Minio, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -71,6 +71,11 @@ const (
 	// Default Read/Write timeouts for each connection.
 	globalConnReadTimeout  = 15 * time.Minute // Timeout after 15 minutes of no data sent by the client.
 	globalConnWriteTimeout = 15 * time.Minute // Timeout after 15 minutes if no data received by the client.
+
+	// Expiry duration after which the multipart uploads are deemed stale.
+	globalMultipartExpiry = time.Hour * 24 * 14 // 2 weeks.
+	// Cleanup interval when the stale multipart cleanup is initiated.
+	globalMultipartCleanupInterval = time.Hour * 24 // 24 hrs.
 )
 
 var (
@@ -114,8 +119,7 @@ var (
 	// Holds the host that was passed using --address
 	globalMinioHost = ""
 
-	// Peer communication struct
-	globalS3Peers = s3Peers{}
+	globalNotificationSys *NotificationSys
 
 	// CA root certificates, a nil value means system certs pool will be used
 	globalRootCAs *x509.CertPool
@@ -160,9 +164,6 @@ var (
 	globalOperationTimeout = newDynamicTimeout(10*time.Minute /*30*/, 600*time.Second)         // default timeout for general ops
 	globalHealingTimeout   = newDynamicTimeout(30*time.Minute /*1*/, 30*time.Minute)           // timeout for healing related ops
 
-	// Keep connection active for clients actively using ListenBucketNotification.
-	globalSNSConnAlive = 5 * time.Second // Send a whitespace every 5 seconds.
-
 	// Storage classes
 	// Set to indicate if storage class is set up
 	globalIsStorageClass bool
@@ -170,9 +171,6 @@ var (
 	globalRRStorageClass storageClass
 	// Set to store standard storage class
 	globalStandardStorageClass storageClass
-
-	// Current RPC version
-	globalRPCAPIVersion = semVersion{2, 0, 0}
 
 	// Add new variable global values here.
 )

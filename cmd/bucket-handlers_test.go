@@ -1,5 +1,5 @@
 /*
- * Minio Cloud Storage, (C) 2016 Minio, Inc.
+ * Minio Cloud Storage, (C) 2016, 2017, 2018 Minio, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"encoding/xml"
 	"io/ioutil"
 	"net/http"
@@ -617,11 +618,6 @@ func testAPIDeleteMultipleObjectsHandler(obj ObjectLayer, instanceType, bucketNa
 	credentials auth.Credentials, t *testing.T) {
 
 	var err error
-	// register event notifier.
-	err = initEventNotifier(obj)
-	if err != nil {
-		t.Fatal("Notifier initialization failed.")
-	}
 
 	contentBytes := []byte("hello")
 	sha256sum := ""
@@ -629,7 +625,7 @@ func testAPIDeleteMultipleObjectsHandler(obj ObjectLayer, instanceType, bucketNa
 	for i := 0; i < 10; i++ {
 		objectName := "test-object-" + strconv.Itoa(i)
 		// uploading the object.
-		_, err = obj.PutObject(bucketName, objectName, mustGetHashReader(t, bytes.NewBuffer(contentBytes), int64(len(contentBytes)), "", sha256sum), nil)
+		_, err = obj.PutObject(context.Background(), bucketName, objectName, mustGetHashReader(t, bytes.NewBuffer(contentBytes), int64(len(contentBytes)), "", sha256sum), nil)
 		// if object upload fails stop the test.
 		if err != nil {
 			t.Fatalf("Put Object %d:  Error uploading object: <ERROR> %v", i, err)

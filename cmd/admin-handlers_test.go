@@ -1,5 +1,5 @@
 /*
- * Minio Cloud Storage, (C) 2016, 2017 Minio, Inc.
+ * Minio Cloud Storage, (C) 2016, 2017, 2018 Minio, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -176,6 +177,11 @@ func prepareAdminXLTestBed() (*adminXLTestBed, error) {
 	// Init global heal state
 	initAllHealState(globalIsXL)
 
+	globalNotificationSys, err = NewNotificationSys(globalServerConfig, globalEndpoints)
+	if err != nil {
+		return nil, err
+	}
+
 	// Setup admin mgmt REST API handlers.
 	adminRouter := router.NewRouter()
 	registerAdminRouter(adminRouter)
@@ -199,7 +205,7 @@ func (atb *adminXLTestBed) TearDown() {
 func (atb *adminXLTestBed) GenerateHealTestData(t *testing.T) {
 	// Create an object myobject under bucket mybucket.
 	bucketName := "mybucket"
-	err := atb.objLayer.MakeBucketWithLocation(bucketName, "")
+	err := atb.objLayer.MakeBucketWithLocation(context.Background(), bucketName, "")
 	if err != nil {
 		t.Fatalf("Failed to make bucket %s - %v", bucketName,
 			err)
@@ -210,7 +216,7 @@ func (atb *adminXLTestBed) GenerateHealTestData(t *testing.T) {
 		objName := "myobject"
 		for i := 0; i < 10; i++ {
 			objectName := fmt.Sprintf("%s-%d", objName, i)
-			_, err = atb.objLayer.PutObject(bucketName, objectName,
+			_, err = atb.objLayer.PutObject(context.Background(), bucketName, objectName,
 				mustGetHashReader(t, bytes.NewReader([]byte("hello")),
 					int64(len("hello")), "", ""), nil)
 			if err != nil {
@@ -223,13 +229,13 @@ func (atb *adminXLTestBed) GenerateHealTestData(t *testing.T) {
 	// create a multipart upload (incomplete)
 	{
 		objName := "mpObject"
-		uploadID, err := atb.objLayer.NewMultipartUpload(bucketName,
+		uploadID, err := atb.objLayer.NewMultipartUpload(context.Background(), bucketName,
 			objName, nil)
 		if err != nil {
 			t.Fatalf("mp new error: %v", err)
 		}
 
-		_, err = atb.objLayer.PutObjectPart(bucketName, objName,
+		_, err = atb.objLayer.PutObjectPart(context.Background(), bucketName, objName,
 			uploadID, 3, mustGetHashReader(t, bytes.NewReader(
 				[]byte("hello")), int64(len("hello")), "", ""))
 		if err != nil {
@@ -243,11 +249,11 @@ func (atb *adminXLTestBed) CleanupHealTestData(t *testing.T) {
 	bucketName := "mybucket"
 	objName := "myobject"
 	for i := 0; i < 10; i++ {
-		atb.objLayer.DeleteObject(bucketName,
+		atb.objLayer.DeleteObject(context.Background(), bucketName,
 			fmt.Sprintf("%s-%d", objName, i))
 	}
 
-	atb.objLayer.DeleteBucket(bucketName)
+	atb.objLayer.DeleteBucket(context.Background(), bucketName)
 }
 
 // initTestObjLayer - Helper function to initialize an XL-based object

@@ -18,6 +18,7 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
@@ -33,7 +34,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/minio/minio/cmd/logger"
+
 	humanize "github.com/dustin/go-humanize"
+	"github.com/gorilla/mux"
 	"github.com/pkg/profile"
 )
 
@@ -98,8 +102,15 @@ func xmlDecoder(body io.Reader, v interface{}, size int64) error {
 }
 
 // checkValidMD5 - verify if valid md5, returns md5 in bytes.
-func checkValidMD5(md5 string) ([]byte, error) {
-	return base64.StdEncoding.DecodeString(strings.TrimSpace(md5))
+func checkValidMD5(h http.Header) ([]byte, error) {
+	md5B64, ok := h["Content-Md5"]
+	if ok {
+		if md5B64[0] == "" {
+			return nil, fmt.Errorf("Content-Md5 header set to empty value")
+		}
+		return base64.StdEncoding.DecodeString(md5B64[0])
+	}
+	return []byte{}, nil
 }
 
 /// http://docs.aws.amazon.com/AmazonS3/latest/dev/UploadingObjects.html
@@ -313,4 +324,18 @@ func ceilFrac(numerator, denominator int64) (ceil int64) {
 		ceil++
 	}
 	return
+}
+
+// Returns context with ReqInfo details set in the context.
+func newContext(r *http.Request, api string) context.Context {
+	vars := mux.Vars(r)
+	bucket := vars["bucket"]
+	object := vars["object"]
+	prefix := vars["prefix"]
+
+	if prefix != "" {
+		object = prefix
+	}
+
+	return logger.SetContext(context.Background(), &logger.ReqInfo{r.RemoteAddr, r.Header.Get("user-agent"), "", api, bucket, object, nil})
 }

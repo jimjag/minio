@@ -1,5 +1,5 @@
 /*
- * Minio Cloud Storage, (C) 2014, 2015, 2016, 2017 Minio, Inc.
+ * Minio Cloud Storage, (C) 2014, 2015, 2016, 2017, 2018 Minio, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -83,7 +84,7 @@ func (lc localAdminClient) ReInitFormat(dryRun bool) error {
 	if objectAPI == nil {
 		return errServerNotInitialized
 	}
-	_, err := objectAPI.HealFormat(dryRun)
+	_, err := objectAPI.HealFormat(context.Background(), dryRun)
 	return err
 }
 
@@ -137,12 +138,7 @@ func (lc localAdminClient) ServerInfoData() (sid ServerInfoData, e error) {
 	if objLayer == nil {
 		return sid, errServerNotInitialized
 	}
-	storage := objLayer.StorageInfo()
-
-	var arns []string
-	for queueArn := range globalEventNotifier.GetAllExternalTargets() {
-		arns = append(arns, queueArn)
-	}
+	storage := objLayer.StorageInfo(context.Background())
 
 	return ServerInfoData{
 		StorageInfo: storage,
@@ -152,7 +148,7 @@ func (lc localAdminClient) ServerInfoData() (sid ServerInfoData, e error) {
 			Uptime:   UTCNow().Sub(globalBootTime),
 			Version:  Version,
 			CommitID: CommitID,
-			SQSARN:   arns,
+			SQSARN:   globalNotificationSys.GetARNList(),
 			Region:   globalServerConfig.GetRegion(),
 		},
 	}, nil

@@ -1,5 +1,5 @@
 /*
- * Minio Cloud Storage, (C) 2015, 2016, 2017 Minio, Inc.
+ * Minio Cloud Storage, (C) 2015, 2016, 2017, 2018 Minio, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ package cmd
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"crypto/ecdsa"
 	"crypto/hmac"
 	crand "crypto/rand"
@@ -351,7 +352,10 @@ func UnstartedTestServer(t TestErrHandler, instanceType string) TestServer {
 	globalMinioHost = host
 	globalMinioPort = port
 	globalMinioAddr = getEndpointsLocalAddr(testServer.Disks)
-	initGlobalS3Peers(testServer.Disks)
+	globalNotificationSys, err = NewNotificationSys(globalServerConfig, testServer.Disks)
+	if err != nil {
+		t.Fatalf("Unable to initialize queue configuration")
+	}
 
 	return testServer
 }
@@ -511,11 +515,6 @@ func resetGlobalNSLock() {
 	}
 }
 
-// reset Global event notifier.
-func resetGlobalEventnotify() {
-	globalEventNotifier = nil
-}
-
 func resetGlobalEndpoints() {
 	globalEndpoints = EndpointList{}
 }
@@ -558,8 +557,6 @@ func resetTestGlobals() {
 	resetGlobalConfig()
 	// Reset global NSLock.
 	resetGlobalNSLock()
-	// Reset global event notifier.
-	resetGlobalEventnotify()
 	// Reset global endpoints.
 	resetGlobalEndpoints()
 	// Reset global isXL flag.
@@ -1637,18 +1634,6 @@ func getCompleteMultipartUploadURL(endPoint, bucketName, objectName, uploadID st
 	return makeTestTargetURL(endPoint, bucketName, objectName, queryValue)
 }
 
-// return URL for put bucket notification.
-func getPutBucketNotificationURL(endPoint, bucketName string) string {
-	return getGetBucketNotificationURL(endPoint, bucketName)
-}
-
-// return URL for get bucket notification.
-func getGetBucketNotificationURL(endPoint, bucketName string) string {
-	queryValue := url.Values{}
-	queryValue.Set("notification", "")
-	return makeTestTargetURL(endPoint, bucketName, "", queryValue)
-}
-
 // return URL for listen bucket notification.
 func getListenBucketNotificationURL(endPoint, bucketName string, prefixes, suffixes, events []string) string {
 	queryValue := url.Values{}
@@ -1720,7 +1705,7 @@ func newTestObjectLayer(endpoints EndpointList) (newObject ObjectLayer, err erro
 	}
 
 	// Initialize a new event notifier.
-	if err = initEventNotifier(xl); err != nil {
+	if globalNotificationSys, err = NewNotificationSys(globalServerConfig, endpoints); err != nil {
 		return nil, err
 	}
 
@@ -1761,18 +1746,6 @@ func removeDiskN(disks []string, n int) {
 	}
 }
 
-// Initializes storage disks with 'N' errored disks, N disks return 'err' for each disk access.
-func prepareNErroredDisks(storageDisks []StorageAPI, offline int, err error, t *testing.T) []StorageAPI {
-	if offline > len(storageDisks) {
-		t.Fatal("Requested more offline disks than supplied storageDisks slice", offline, len(storageDisks))
-	}
-
-	for i := 0; i < offline; i++ {
-		storageDisks[i] = &naughtyDisk{disk: storageDisks[i], defaultErr: err}
-	}
-	return storageDisks
-}
-
 // creates a bucket for the tests and returns the bucket name.
 // initializes the specified API endpoints for the tests.
 // initialies the root and returns its path.
@@ -1782,7 +1755,7 @@ func initAPIHandlerTest(obj ObjectLayer, endpoints []string) (string, http.Handl
 	bucketName := getRandomBucketName()
 
 	// Create bucket.
-	err := obj.MakeBucketWithLocation(bucketName, "")
+	err := obj.MakeBucketWithLocation(context.Background(), bucketName, "")
 	if err != nil {
 		// failed to create newbucket, return err.
 		return "", nil, err
@@ -1888,7 +1861,7 @@ func ExecObjectLayerAPIAnonTest(t *testing.T, obj ObjectLayer, testName, bucketN
 		Version:    "1.0",
 		Statements: []policy.Statement{policyFunc(bucketName, "")},
 	}
-	obj.SetBucketPolicy(bucketName, bp)
+	obj.SetBucketPolicy(context.Background(), bucketName, bp)
 	// now call the handler again with the unsigned/anonymous request, it should be accepted.
 	rec = httptest.NewRecorder()
 

@@ -1,5 +1,5 @@
 /*
- * Minio Cloud Storage, (C) 2015, 2016, 2017 Minio, Inc.
+ * Minio Cloud Storage, (C) 2015, 2016, 2017, 2018 Minio, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 package cmd
 
 import (
+	"context"
 	"os"
 )
 
@@ -38,11 +39,15 @@ func handleSignals() {
 	stopProcess := func() bool {
 		var err, oerr error
 
+		if globalNotificationSys != nil {
+			globalNotificationSys.RemoveAllRemoteTargets()
+		}
+
 		err = globalHTTPServer.Shutdown()
 		errorIf(err, "Unable to shutdown http server")
 
 		if objAPI := newObjectLayerFn(); objAPI != nil {
-			oerr = objAPI.Shutdown()
+			oerr = objAPI.Shutdown(context.Background())
 			errorIf(oerr, "Unable to shutdown object layer")
 		}
 
@@ -55,7 +60,7 @@ func handleSignals() {
 			errorIf(err, "http server exited abnormally")
 			var oerr error
 			if objAPI := newObjectLayerFn(); objAPI != nil {
-				oerr = objAPI.Shutdown()
+				oerr = objAPI.Shutdown(context.Background())
 				errorIf(oerr, "Unable to shutdown object layer")
 			}
 
