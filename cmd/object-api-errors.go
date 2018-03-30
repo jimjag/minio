@@ -1,5 +1,5 @@
 /*
- * Minio Cloud Storage, (C) 2015 Minio, Inc.
+ * Minio Cloud Storage, (C) 2015, 2016, 2017, 2018 Minio, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -170,6 +170,13 @@ type ObjectNotFound GenericError
 
 func (e ObjectNotFound) Error() string {
 	return "Object not found: " + e.Bucket + "#" + e.Object
+}
+
+// ObjectAlreadyExists object already exists.
+type ObjectAlreadyExists GenericError
+
+func (e ObjectAlreadyExists) Error() string {
+	return "Object: " + e.Bucket + "#" + e.Object + " already exists"
 }
 
 // ObjectExistsAsDirectory object already exists as a directory.
@@ -382,6 +389,13 @@ type UnsupportedMetadata struct{}
 
 func (e UnsupportedMetadata) Error() string {
 	return "Unsupported headers in Metadata"
+}
+
+// BackendDown is returned for network errors or if the gateway's backend is down.
+type BackendDown struct{}
+
+func (e BackendDown) Error() string {
+	return "Backend down"
 }
 
 // isErrIncompleteBody - Check if error type is IncompleteBody.

@@ -136,8 +136,11 @@ func (api objectAPIHandlers) GetBucketLocationHandler(w http.ResponseWriter, r *
 		return
 	}
 	defer bucketLock.RUnlock()
-
-	if _, err := objectAPI.GetBucketInfo(ctx, bucket); err != nil {
+	getBucketInfo := objectAPI.GetBucketInfo
+	if api.CacheAPI() != nil {
+		getBucketInfo = api.CacheAPI().GetBucketInfo
+	}
+	if _, err := getBucketInfo(ctx, bucket); err != nil {
 		writeErrorResponse(w, toAPIErrorCode(err), r.URL)
 		return
 	}
@@ -219,7 +222,11 @@ func (api objectAPIHandlers) ListBucketsHandler(w http.ResponseWriter, r *http.R
 		writeErrorResponse(w, ErrServerNotInitialized, r.URL)
 		return
 	}
+	listBuckets := objectAPI.ListBuckets
 
+	if api.CacheAPI() != nil {
+		listBuckets = api.CacheAPI().ListBuckets
+	}
 	// ListBuckets does not have any bucket action.
 	s3Error := checkRequestAuthType(r, "", "", globalMinioDefaultRegion)
 	if s3Error == ErrInvalidRegion {
@@ -231,7 +238,7 @@ func (api objectAPIHandlers) ListBucketsHandler(w http.ResponseWriter, r *http.R
 		return
 	}
 	// Invoke the list buckets.
-	bucketsInfo, err := objectAPI.ListBuckets(ctx)
+	bucketsInfo, err := listBuckets(ctx)
 	if err != nil {
 		writeErrorResponse(w, toAPIErrorCode(err), r.URL)
 		return
@@ -300,6 +307,14 @@ func (api objectAPIHandlers) DeleteMultipleObjectsHandler(w http.ResponseWriter,
 		return
 	}
 
+	// Deny if WORM is enabled
+	if globalWORMEnabled {
+		// Not required to check whether given objects exist or not, because
+		// DeleteMultipleObject is always successful irrespective of object existence.
+		writeErrorResponse(w, ErrMethodNotAllowed, r.URL)
+		return
+	}
+
 	var wg = &sync.WaitGroup{} // Allocate a new wait group.
 	var dErrs = make([]error, len(deleteObjects.Objects))
 
@@ -317,7 +332,11 @@ func (api objectAPIHandlers) DeleteMultipleObjectsHandler(w http.ResponseWriter,
 				}
 				return
 			}
-			dErr := objectAPI.DeleteObject(ctx, bucket, obj.ObjectName)
+			deleteObject := objectAPI.DeleteObject
+			if api.CacheAPI() != nil {
+				deleteObject = api.CacheAPI().DeleteObject
+			}
+			dErr := deleteObject(ctx, bucket, obj.ObjectName)
 			if dErr != nil {
 				dErrs[i] = dErr
 			}
@@ -675,8 +694,11 @@ func (api objectAPIHandlers) HeadBucketHandler(w http.ResponseWriter, r *http.Re
 		writeErrorResponseHeadersOnly(w, s3Error)
 		return
 	}
-
-	if _, err := objectAPI.GetBucketInfo(ctx, bucket); err != nil {
+	getBucketInfo := objectAPI.GetBucketInfo
+	if api.CacheAPI() != nil {
+		getBucketInfo = api.CacheAPI().GetBucketInfo
+	}
+	if _, err := getBucketInfo(ctx, bucket); err != nil {
 		writeErrorResponseHeadersOnly(w, toAPIErrorCode(err))
 		return
 	}
@@ -702,9 +724,12 @@ func (api objectAPIHandlers) DeleteBucketHandler(w http.ResponseWriter, r *http.
 
 	vars := mux.Vars(r)
 	bucket := vars["bucket"]
-
+	deleteBucket := objectAPI.DeleteBucket
+	if api.CacheAPI() != nil {
+		deleteBucket = api.CacheAPI().DeleteBucket
+	}
 	// Attempt to delete bucket.
-	if err := objectAPI.DeleteBucket(ctx, bucket); err != nil {
+	if err := deleteBucket(ctx, bucket); err != nil {
 		writeErrorResponse(w, toAPIErrorCode(err), r.URL)
 		return
 	}

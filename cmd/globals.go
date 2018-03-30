@@ -172,7 +172,18 @@ var (
 	// Set to store standard storage class
 	globalStandardStorageClass storageClass
 
+	globalWORMEnabled bool
+
+	// Is Disk Caching set up
+	globalIsDiskCacheEnabled bool
+	// Disk cache drives
+	globalCacheDrives []string
+	// Disk cache excludes
+	globalCacheExcludes []string
+	// Disk cache expiry
+	globalCacheExpiry = 90
 	// Add new variable global values here.
+
 )
 
 // global colors.

@@ -67,6 +67,11 @@ ENVIRONMENT VARIABLES:
   BROWSER:
      MINIO_BROWSER: To disable web browser access, set this value to "off".
 
+  CACHE:
+     MINIO_CACHE_DRIVES: List of cache drives delimited by ";".
+     MINIO_CACHE_EXCLUDE: List of cache exclusion patterns delimited by ";".
+     MINIO_CACHE_EXPIRY: Cache expiry duration in days.
+	
   REGION:
      MINIO_REGION: To set custom region. By default all regions are accepted.
 
@@ -74,7 +79,10 @@ ENVIRONMENT VARIABLES:
      MINIO_UPDATE: To turn off in-place upgrades, set this value to "off".
 
   DOMAIN:
-     MINIO_DOMAIN: To enable virtual-host-style requests. Set this value to Minio host domain name.
+     MINIO_DOMAIN: To enable virtual-host-style requests, set this value to Minio host domain name.
+
+  WORM:
+     MINIO_WORM: To turn on Write-Once-Read-Many in server, set this value to "on".
 
 EXAMPLES:
   1. Start minio server on "/home/shared" directory.
@@ -105,6 +113,12 @@ EXAMPLES:
       $ export MINIO_ACCESS_KEY=minio
       $ export MINIO_SECRET_KEY=miniostorage
       $ {{.HelpName}} http://node{1...8}.example.com/mnt/export/{1...8}
+	
+  7. Start minio server with edge caching enabled.
+     $ export MINIO_CACHE_DRIVES="/home/drive1;/home/drive2;/home/drive3;/home/drive4"
+     $ export MINIO_CACHE_EXCLUDE="bucket1/*;*.png"
+     $ export MINIO_CACHE_EXPIRY=40
+     $ {{.HelpName}} /home/shared
 `,
 }
 
