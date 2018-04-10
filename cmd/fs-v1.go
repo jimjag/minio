@@ -24,11 +24,9 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
-	"path/filepath"
 	"reflect"
 	"sort"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/minio/minio-go/pkg/policy"
@@ -104,33 +102,7 @@ func NewFSObjectLayer(fsPath string) (ObjectLayer, error) {
 	}
 
 	var err error
-	// Disallow relative paths, figure out absolute paths.
-	fsPath, err = filepath.Abs(fsPath)
-	if err != nil {
-		return nil, err
-	}
-
-	fi, err := os.Stat((fsPath))
-	if err == nil {
-		if !fi.IsDir() {
-			return nil, syscall.ENOTDIR
-		}
-	}
-	if os.IsNotExist(err) {
-		// Disk not found create it.
-		err = os.MkdirAll(fsPath, 0777)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	di, err := getDiskInfo((fsPath))
-	if err != nil {
-		return nil, err
-	}
-
-	// Check if disk has minimum required total space.
-	if err = checkDiskMinTotal(di); err != nil {
+	if fsPath, err = checkPathValid(fsPath); err != nil {
 		return nil, err
 	}
 
@@ -1044,6 +1016,11 @@ func (fs *FSObjects) ListObjects(ctx context.Context, bucket, prefix, marker, de
 
 	// Success.
 	return result, nil
+}
+
+// ReloadFormat - no-op for fs, Valid only for XL.
+func (fs *FSObjects) ReloadFormat(ctx context.Context, dryRun bool) error {
+	return errors.Trace(NotImplemented{})
 }
 
 // HealFormat - no-op for fs, Valid only for XL.
