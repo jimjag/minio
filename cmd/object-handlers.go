@@ -31,7 +31,6 @@ import (
 	"sort"
 	"strconv"
 
-	etcd "github.com/coreos/etcd/client"
 	"github.com/gorilla/mux"
 	miniogo "github.com/minio/minio-go"
 	"github.com/minio/minio/cmd/logger"
@@ -1038,6 +1037,7 @@ func (api objectAPIHandlers) CopyObjectPartHandler(w http.ResponseWriter, r *htt
 
 	var writer io.WriteCloser = pipeWriter
 	var reader io.Reader = pipeReader
+	var getLength = length
 	srcInfo.Reader, err = hash.NewReader(reader, length, "", "")
 	if err != nil {
 		pipeWriter.CloseWithError(err)
@@ -1057,7 +1057,7 @@ func (api objectAPIHandlers) CopyObjectPartHandler(w http.ResponseWriter, r *htt
 			// Response writer should be limited early on for decryption upto required length,
 			// additionally also skipping mod(offset)64KiB boundaries.
 			writer = ioutil.LimitedWriter(writer, startOffset%(64*1024), length)
-			writer, startOffset, length, err = DecryptBlocksRequest(writer, r, srcBucket, srcObject, startOffset, length, srcInfo, true)
+			writer, startOffset, getLength, err = DecryptBlocksRequest(writer, r, srcBucket, srcObject, startOffset, length, srcInfo, true)
 			if err != nil {
 				pipeWriter.CloseWithError(err)
 				writeErrorResponse(w, toAPIErrorCode(err), r.URL)
@@ -1077,7 +1077,6 @@ func (api objectAPIHandlers) CopyObjectPartHandler(w http.ResponseWriter, r *htt
 				return
 			}
 
-			// Calculating object encryption key
 			var objectEncryptionKey []byte
 			objectEncryptionKey, err = decryptObjectInfo(key, dstBucket, dstObject, li.UserDefined)
 			if err != nil {
@@ -1086,19 +1085,21 @@ func (api objectAPIHandlers) CopyObjectPartHandler(w http.ResponseWriter, r *htt
 				return
 			}
 
-			reader, err = sio.EncryptReader(reader, sio.Config{Key: objectEncryptionKey})
+			var partIDbin [4]byte
+			binary.LittleEndian.PutUint32(partIDbin[:], uint32(partID)) // marshal part ID
+
+			mac := hmac.New(sha256.New, objectEncryptionKey) // derive part encryption key from part ID and object key
+			mac.Write(partIDbin[:])
+			partEncryptionKey := mac.Sum(nil)
+			reader, err = sio.EncryptReader(reader, sio.Config{Key: partEncryptionKey})
 			if err != nil {
 				pipeWriter.CloseWithError(err)
 				writeErrorResponse(w, toAPIErrorCode(err), r.URL)
 				return
 			}
 
-			size := length
-			if !sseCopyC {
-				info := ObjectInfo{Size: length}
-				size = info.EncryptedSize()
-			}
-
+			info := ObjectInfo{Size: length}
+			size := info.EncryptedSize()
 			srcInfo.Reader, err = hash.NewReader(reader, size, "", "")
 			if err != nil {
 				pipeWriter.CloseWithError(err)
@@ -1112,7 +1113,7 @@ func (api objectAPIHandlers) CopyObjectPartHandler(w http.ResponseWriter, r *htt
 	// Copy source object to destination, if source and destination
 	// object is same then only metadata is updated.
 	partInfo, err := objectAPI.CopyObjectPart(ctx, srcBucket, srcObject, dstBucket,
-		dstObject, uploadID, partID, startOffset, length, srcInfo)
+		dstObject, uploadID, partID, startOffset, getLength, srcInfo)
 	if err != nil {
 		writeErrorResponse(w, toAPIErrorCode(err), r.URL)
 		return
@@ -1545,7 +1546,7 @@ func (api objectAPIHandlers) DeleteObjectHandler(w http.ResponseWriter, r *http.
 	if globalDNSConfig != nil {
 		_, err := globalDNSConfig.Get(bucket)
 		if err != nil {
-			if etcd.IsKeyNotFound(err) || err == dns.ErrNoEntriesFound {
+			if err == dns.ErrNoEntriesFound {
 				writeErrorResponse(w, ErrNoSuchBucket, r.URL)
 			} else {
 				writeErrorResponse(w, toAPIErrorCode(err), r.URL)
