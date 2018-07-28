@@ -40,8 +40,8 @@ type APIErrorResponse struct {
 	XMLName    xml.Name `xml:"Error" json:"-"`
 	Code       string
 	Message    string
-	Key        string
-	BucketName string
+	Key        string `xml:"Key,omitempty" json:"Key,omitempty"`
+	BucketName string `xml:"BucketName,omitempty" json:"BucketName,omitempty"`
 	Resource   string
 	RequestID  string `xml:"RequestId" json:"RequestId"`
 	HostID     string `xml:"HostId" json:"HostId"`
@@ -169,7 +169,6 @@ const (
 	ErrInvalidResourceName
 	ErrServerNotInitialized
 	ErrOperationTimedOut
-	ErrPartsSizeUnequal
 	ErrInvalidRequest
 	// Minio storage class error codes
 	ErrInvalidStorageClass
@@ -785,11 +784,6 @@ var errorCodeResponse = map[APIErrorCode]APIError{
 		Description:    "Your metadata headers are not supported.",
 		HTTPStatusCode: http.StatusBadRequest,
 	},
-	ErrPartsSizeUnequal: {
-		Code:           "XMinioPartsSizeUnequal",
-		Description:    "All parts except the last part should be of the same size.",
-		HTTPStatusCode: http.StatusBadRequest,
-	},
 	ErrObjectTampered: {
 		Code:           "XMinioObjectTampered",
 		Description:    errObjectTampered.Error(),
@@ -970,8 +964,6 @@ func toAPIErrorCode(err error) (apiErr APIErrorCode) {
 		apiErr = ErrEntityTooLarge
 	case UnsupportedMetadata:
 		apiErr = ErrUnsupportedMetadata
-	case PartsSizeUnequal:
-		apiErr = ErrPartsSizeUnequal
 	case BucketPolicyNotFound:
 		apiErr = ErrNoSuchBucketPolicy
 	case *event.ErrInvalidEventName:
@@ -1012,12 +1004,12 @@ func getAPIError(code APIErrorCode) APIError {
 
 // getErrorResponse gets in standard error and resource value and
 // provides a encodable populated response values
-func getAPIErrorResponse(err APIError, resource string) APIErrorResponse {
+func getAPIErrorResponse(err APIError, resource, requestid string) APIErrorResponse {
 	return APIErrorResponse{
 		Code:      err.Code,
 		Message:   err.Description,
 		Resource:  resource,
-		RequestID: "3L137",
+		RequestID: requestid,
 		HostID:    "3L137",
 	}
 }

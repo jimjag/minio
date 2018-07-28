@@ -19,8 +19,8 @@ package cmd
 var (
 	uiErrInvalidConfig = newUIErrFn(
 		"Invalid value found in the configuration file",
-		"Please ensure a valid value in the configuration file, for more details refer https://docs.minio.io/docs/minio-server-configuration-guide",
-		"",
+		"Please ensure a valid value in the configuration file",
+		"For more details, refer to https://docs.minio.io/docs/minio-server-configuration-guide",
 	)
 
 	uiErrInvalidBrowserValue = newUIErrFn(
@@ -117,12 +117,6 @@ Example 1:
 	uiErrUnableToWriteInBackend = newUIErrFn(
 		"Unable to write to the backend",
 		"Please ensure Minio binary has write permissions for the backend",
-		"",
-	)
-
-	uiErrUnableToReadFromBackend = newUIErrFn(
-		"Unable to read from the backend",
-		"Please ensure Minio binary has read permissions for the backend",
 		"",
 	)
 

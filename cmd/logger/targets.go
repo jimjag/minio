@@ -1,5 +1,5 @@
 /*
- * Minio Cloud Storage, (C) 2016 Minio, Inc.
+ * Minio Cloud Storage, (C) 2018 Minio, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,9 +14,20 @@
  * limitations under the License.
  */
 
-package madmin
+package logger
 
-const (
-	// Unsigned payload.
-	unsignedPayload = "UNSIGNED-PAYLOAD"
-)
+// LoggingTarget is the entity that we will receive
+// a single log entry and send it to the log target
+//   e.g. send the log to a http server
+type LoggingTarget interface {
+	send(entry logEntry) error
+}
+
+// Targets is the set of enabled loggers
+var Targets = []LoggingTarget{}
+
+// AddTarget adds a new logger target to the
+// list of enabled loggers
+func AddTarget(t LoggingTarget) {
+	Targets = append(Targets, t)
+}
