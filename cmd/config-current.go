@@ -24,6 +24,7 @@ import (
 	"sync"
 
 	"github.com/miekg/dns"
+	"github.com/minio/minio/cmd/crypto"
 	"github.com/minio/minio/cmd/logger"
 
 	"github.com/minio/minio/pkg/auth"
@@ -40,9 +41,9 @@ import (
 // 6. Make changes in config-current_test.go for any test change
 
 // Config version
-const serverConfigVersion = "27"
+const serverConfigVersion = "28"
 
-type serverConfig = serverConfigV27
+type serverConfig = serverConfigV28
 
 var (
 	// globalServerConfig server config.
@@ -63,6 +64,12 @@ func (s *serverConfig) SetRegion(region string) {
 
 // GetRegion get current region.
 func (s *serverConfig) GetRegion() string {
+	if globalIsEnvRegion {
+		return globalServerRegion
+	}
+	if s == nil {
+		return ""
+	}
 	return s.Region
 }
 
@@ -110,16 +117,34 @@ func (s *serverConfig) SetStorageClass(standardClass, rrsClass storageClass) {
 // GetStorageClass reads storage class fields from current config.
 // It returns the standard and reduced redundancy storage class struct
 func (s *serverConfig) GetStorageClass() (storageClass, storageClass) {
+	if globalIsStorageClass {
+		return globalStandardStorageClass, globalRRStorageClass
+	}
+	if s == nil {
+		return storageClass{}, storageClass{}
+	}
 	return s.StorageClass.Standard, s.StorageClass.RRS
 }
 
 // GetBrowser get current credentials.
 func (s *serverConfig) GetBrowser() bool {
+	if globalIsEnvWORM {
+		return globalWORMEnabled
+	}
+	if s == nil {
+		return true
+	}
 	return bool(s.Browser)
 }
 
 // GetWorm get current credentials.
 func (s *serverConfig) GetWorm() bool {
+	if globalIsEnvBrowser {
+		return globalIsBrowserEnabled
+	}
+	if s == nil {
+		return false
+	}
 	return bool(s.Worm)
 }
 
@@ -133,10 +158,24 @@ func (s *serverConfig) SetCacheConfig(drives, exclude []string, expiry int, maxu
 
 // GetCacheConfig gets the current cache config
 func (s *serverConfig) GetCacheConfig() CacheConfig {
+	if globalIsDiskCacheEnabled {
+		return CacheConfig{
+			Drives:  globalCacheDrives,
+			Exclude: globalCacheExcludes,
+			Expiry:  globalCacheExpiry,
+			MaxUse:  globalCacheMaxUse,
+		}
+	}
+	if s == nil {
+		return CacheConfig{}
+	}
 	return s.Cache
 }
 
 func (s *serverConfig) Validate() error {
+	if s == nil {
+		return nil
+	}
 	if s.Version != serverConfigVersion {
 		return fmt.Errorf("configuration version mismatch. Expected: ‘%s’, Got: ‘%s’", serverConfigVersion, s.Version)
 	}
@@ -243,6 +282,10 @@ func (s *serverConfig) loadFromEnvs() {
 	if globalIsDiskCacheEnabled {
 		s.SetCacheConfig(globalCacheDrives, globalCacheExcludes, globalCacheExpiry, globalCacheMaxUse)
 	}
+
+	if globalKMS != nil {
+		s.KMS = globalKMSConfig
+	}
 }
 
 // Returns the string describing a difference with the given
@@ -284,6 +327,8 @@ func (s *serverConfig) ConfigDiff(t *serverConfig) string {
 		return "MQTT Notification configuration differs"
 	case !reflect.DeepEqual(s.Logger, t.Logger):
 		return "Logger configuration differs"
+	case !reflect.DeepEqual(s.KMS, t.KMS):
+		return "KMS configuration differs"
 	case reflect.DeepEqual(s, t):
 		return ""
 	default:
@@ -312,6 +357,7 @@ func newServerConfig() *serverConfig {
 			Expiry:  globalCacheExpiry,
 			MaxUse:  globalCacheMaxUse,
 		},
+		KMS:    crypto.KMSConfig{},
 		Notify: notifier{},
 	}
 
@@ -374,6 +420,13 @@ func (s *serverConfig) loadToCachedConfigs() {
 		globalCacheExcludes = cacheConf.Exclude
 		globalCacheExpiry = cacheConf.Expiry
 		globalCacheMaxUse = cacheConf.MaxUse
+	}
+	if globalKMS == nil {
+		globalKMSConfig = s.KMS
+		if kms, err := crypto.NewVault(globalKMSConfig); err == nil {
+			globalKMS = kms
+			globalKMSKeyID = globalKMSConfig.Vault.Key.Name
+		}
 	}
 }
 

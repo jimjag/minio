@@ -17,10 +17,13 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 
+	"github.com/minio/minio/cmd/crypto"
 	"github.com/minio/minio/cmd/logger"
 	"github.com/minio/minio/pkg/auth"
 	"github.com/minio/minio/pkg/dns"
@@ -48,7 +51,7 @@ func GetVersion(configFile string) (string, error) {
 	return quick.GetVersion(configFile, globalEtcdClient)
 }
 
-// Migrates all config versions from "1" to "18".
+// Migrates all config versions from "1" to "28".
 func migrateConfig() error {
 	// Purge all configs with version '1',
 	// this is a special case since version '1' used
@@ -208,6 +211,11 @@ func migrateConfig() error {
 		fallthrough
 	case "26":
 		if err = migrateV26ToV27(); err != nil {
+			return err
+		}
+		fallthrough
+	case "27":
+		if err = migrateV27ToV28(); err != nil {
 			return err
 		}
 		fallthrough
@@ -2371,5 +2379,59 @@ func migrateV26ToV27() error {
 	}
 
 	logger.Info(configMigrateMSGTemplate, configFile, "26", "27")
+	return nil
+}
+
+func migrateV27ToV28() error {
+	configFile := getConfigFile()
+
+	// config V28 is backward compatible with V27, load the old
+	// config file in serverConfigV28 struct and initialize KMSConfig
+	srvConfig := &serverConfigV28{}
+	_, err := quick.LoadConfig(configFile, globalEtcdClient, srvConfig)
+	if os.IsNotExist(err) {
+		return nil
+	} else if err != nil {
+		return fmt.Errorf("Unable to load config file. %v", err)
+	}
+
+	if srvConfig.Version != "27" {
+		return nil
+	}
+
+	srvConfig.Version = "28"
+	srvConfig.KMS = crypto.KMSConfig{}
+	if err = quick.SaveConfig(srvConfig, configFile, globalEtcdClient); err != nil {
+		return fmt.Errorf("Failed to migrate config from ‘27’ to ‘28’. %v", err)
+	}
+
+	logger.Info(configMigrateMSGTemplate, configFile, "27", "28")
+	return nil
+}
+
+// Migrates '.minio.sys/config.json' v27 to v28.
+func migrateMinioSysConfig(objAPI ObjectLayer) error {
+	return migrateV27ToV28MinioSys(objAPI)
+}
+
+func migrateV27ToV28MinioSys(objAPI ObjectLayer) error {
+	configFile := path.Join(minioConfigPrefix, minioConfigFile)
+	srvConfig, err := readServerConfig(context.Background(), objAPI)
+	if err == errConfigNotFound {
+		return nil
+	} else if err != nil {
+		return fmt.Errorf("Unable to load config file. %v", err)
+	}
+	if srvConfig.Version != "27" {
+		return nil
+	}
+
+	srvConfig.Version = "28"
+	srvConfig.KMS = crypto.KMSConfig{}
+	if err = saveServerConfig(objAPI, srvConfig); err != nil {
+		return fmt.Errorf("Failed to migrate config from ‘27’ to ‘28’. %v", err)
+	}
+
+	logger.Info(configMigrateMSGTemplate, configFile, "27", "28")
 	return nil
 }
