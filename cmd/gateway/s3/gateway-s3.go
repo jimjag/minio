@@ -328,7 +328,7 @@ func (l *s3Objects) ListObjectsV2(ctx context.Context, bucket, prefix, continuat
 }
 
 // GetObjectNInfo - returns object info and locked object ReadCloser
-func (l *s3Objects) GetObjectNInfo(ctx context.Context, bucket, object string, rs *minio.HTTPRangeSpec, h http.Header) (gr *minio.GetObjectReader, err error) {
+func (l *s3Objects) GetObjectNInfo(ctx context.Context, bucket, object string, rs *minio.HTTPRangeSpec, h http.Header, lockType minio.LockType) (gr *minio.GetObjectReader, err error) {
 	var objInfo minio.ObjectInfo
 	objInfo, err = l.GetObjectInfo(ctx, bucket, object, minio.ObjectOptions{})
 	if err != nil {
@@ -346,7 +346,10 @@ func (l *s3Objects) GetObjectNInfo(ctx context.Context, bucket, object string, r
 		err := l.GetObject(ctx, bucket, object, startOffset, length, pw, objInfo.ETag, minio.ObjectOptions{})
 		pw.CloseWithError(err)
 	}()
-	return minio.NewGetObjectReaderFromReader(pr, objInfo), nil
+	// Setup cleanup function to cause the above go-routine to
+	// exit in case of partial read
+	pipeCloser := func() { pr.Close() }
+	return minio.NewGetObjectReaderFromReader(pr, objInfo, pipeCloser), nil
 }
 
 // GetObject reads an object from S3. Supports additional

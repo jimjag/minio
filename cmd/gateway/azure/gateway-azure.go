@@ -616,7 +616,7 @@ func (a *azureObjects) ListObjectsV2(ctx context.Context, bucket, prefix, contin
 }
 
 // GetObjectNInfo - returns object info and locked object ReadCloser
-func (a *azureObjects) GetObjectNInfo(ctx context.Context, bucket, object string, rs *minio.HTTPRangeSpec, h http.Header) (gr *minio.GetObjectReader, err error) {
+func (a *azureObjects) GetObjectNInfo(ctx context.Context, bucket, object string, rs *minio.HTTPRangeSpec, h http.Header, lockType minio.LockType) (gr *minio.GetObjectReader, err error) {
 	var objInfo minio.ObjectInfo
 	objInfo, err = a.GetObjectInfo(ctx, bucket, object, minio.ObjectOptions{})
 	if err != nil {
@@ -634,7 +634,10 @@ func (a *azureObjects) GetObjectNInfo(ctx context.Context, bucket, object string
 		err := a.GetObject(ctx, bucket, object, startOffset, length, pw, objInfo.ETag, minio.ObjectOptions{})
 		pw.CloseWithError(err)
 	}()
-	return minio.NewGetObjectReaderFromReader(pr, objInfo), nil
+	// Setup cleanup function to cause the above go-routine to
+	// exit in case of partial read
+	pipeCloser := func() { pr.Close() }
+	return minio.NewGetObjectReaderFromReader(pr, objInfo, pipeCloser), nil
 }
 
 // GetObject - reads an object from azure. Supports additional

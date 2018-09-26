@@ -507,7 +507,7 @@ func (t *tritonObjects) ListObjectsV2(ctx context.Context, bucket, prefix, conti
 }
 
 // GetObjectNInfo - returns object info and locked object ReadCloser
-func (t *tritonObjects) GetObjectNInfo(ctx context.Context, bucket, object string, rs *minio.HTTPRangeSpec, h http.Header) (gr *minio.GetObjectReader, err error) {
+func (t *tritonObjects) GetObjectNInfo(ctx context.Context, bucket, object string, rs *minio.HTTPRangeSpec, h http.Header, lockType minio.LockType) (gr *minio.GetObjectReader, err error) {
 	var objInfo minio.ObjectInfo
 	objInfo, err = t.GetObjectInfo(ctx, bucket, object, minio.ObjectOptions{})
 	if err != nil {
@@ -525,7 +525,10 @@ func (t *tritonObjects) GetObjectNInfo(ctx context.Context, bucket, object strin
 		err := t.GetObject(ctx, bucket, object, startOffset, length, pw, objInfo.ETag, minio.ObjectOptions{})
 		pw.CloseWithError(err)
 	}()
-	return minio.NewGetObjectReaderFromReader(pr, objInfo), nil
+	// Setup cleanup function to cause the above go-routine to
+	// exit in case of partial read
+	pipeCloser := func() { pr.Close() }
+	return minio.NewGetObjectReaderFromReader(pr, objInfo, pipeCloser), nil
 }
 
 // GetObject - Reads an object from Manta. Supports additional parameters like
