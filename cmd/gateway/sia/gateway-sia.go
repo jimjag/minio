@@ -432,9 +432,9 @@ func (s *siaObjects) ListObjects(ctx context.Context, bucket string, prefix stri
 }
 
 // GetObjectNInfo - returns object info and locked object ReadCloser
-func (s *siaObjects) GetObjectNInfo(ctx context.Context, bucket, object string, rs *minio.HTTPRangeSpec, h http.Header) (gr *minio.GetObjectReader, err error) {
+func (s *siaObjects) GetObjectNInfo(ctx context.Context, bucket, object string, rs *minio.HTTPRangeSpec, h http.Header, lockType minio.LockType, opts minio.ObjectOptions) (gr *minio.GetObjectReader, err error) {
 	var objInfo minio.ObjectInfo
-	objInfo, err = s.GetObjectInfo(ctx, bucket, object, minio.ObjectOptions{})
+	objInfo, err = s.GetObjectInfo(ctx, bucket, object, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -447,10 +447,13 @@ func (s *siaObjects) GetObjectNInfo(ctx context.Context, bucket, object string, 
 
 	pr, pw := io.Pipe()
 	go func() {
-		err := s.GetObject(ctx, bucket, object, startOffset, length, pw, objInfo.ETag, minio.ObjectOptions{})
+		err := s.GetObject(ctx, bucket, object, startOffset, length, pw, objInfo.ETag, opts)
 		pw.CloseWithError(err)
 	}()
-	return minio.NewGetObjectReaderFromReader(pr, objInfo), nil
+	// Setup cleanup function to cause the above go-routine to
+	// exit in case of partial read
+	pipeCloser := func() { pr.Close() }
+	return minio.NewGetObjectReaderFromReader(pr, objInfo, pipeCloser), nil
 }
 
 func (s *siaObjects) GetObject(ctx context.Context, bucket string, object string, startOffset int64, length int64, writer io.Writer, etag string, opts minio.ObjectOptions) error {
@@ -647,4 +650,9 @@ func (s *siaObjects) deleteTempFileWhenUploadCompletes(ctx context.Context, temp
 	}
 
 	os.Remove(tempFile)
+}
+
+// IsCompressionSupported returns whether compression is applicable for this layer.
+func (s *siaObjects) IsCompressionSupported() bool {
+	return false
 }
