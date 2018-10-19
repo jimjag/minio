@@ -53,12 +53,14 @@ func registerAdminRouter(router *mux.Router) {
 	// Info operations
 	adminV1Router.Methods(http.MethodGet).Path("/info").HandlerFunc(httpTraceAll(adminAPI.ServerInfoHandler))
 
-	/// Heal operations
+	if globalIsDistXL || globalIsXL {
+		/// Heal operations
 
-	// Heal processing endpoint.
-	adminV1Router.Methods(http.MethodPost).Path("/heal/").HandlerFunc(httpTraceAll(adminAPI.HealHandler))
-	adminV1Router.Methods(http.MethodPost).Path("/heal/{bucket}").HandlerFunc(httpTraceAll(adminAPI.HealHandler))
-	adminV1Router.Methods(http.MethodPost).Path("/heal/{bucket}/{prefix:.*}").HandlerFunc(httpTraceAll(adminAPI.HealHandler))
+		// Heal processing endpoint.
+		adminV1Router.Methods(http.MethodPost).Path("/heal/").HandlerFunc(httpTraceAll(adminAPI.HealHandler))
+		adminV1Router.Methods(http.MethodPost).Path("/heal/{bucket}").HandlerFunc(httpTraceAll(adminAPI.HealHandler))
+		adminV1Router.Methods(http.MethodPost).Path("/heal/{bucket}/{prefix:.*}").HandlerFunc(httpTraceAll(adminAPI.HealHandler))
+	}
 
 	// Profiling operations
 	adminV1Router.Methods(http.MethodPost).Path("/profiling/start").HandlerFunc(httpTraceAll(adminAPI.StartProfilingHandler)).
@@ -81,15 +83,28 @@ func registerAdminRouter(router *mux.Router) {
 
 	// -- IAM APIs --
 
+	// Add policy IAM
+	adminV1Router.Methods(http.MethodPut).Path("/add-canned-policy").HandlerFunc(httpTraceHdrs(adminAPI.AddCannedPolicy)).Queries("name", "{name:.*}")
+
 	// Add user IAM
 	adminV1Router.Methods(http.MethodPut).Path("/add-user").HandlerFunc(httpTraceHdrs(adminAPI.AddUser)).Queries("accessKey", "{accessKey:.*}")
-	adminV1Router.Methods(http.MethodPut).Path("/add-user-policy").HandlerFunc(httpTraceHdrs(adminAPI.AddUserPolicy)).Queries("accessKey", "{accessKey:.*}")
+	adminV1Router.Methods(http.MethodPut).Path("/set-user-policy").HandlerFunc(httpTraceHdrs(adminAPI.SetUserPolicy)).
+		Queries("accessKey", "{accessKey:.*}").Queries("name", "{name:.*}")
+	adminV1Router.Methods(http.MethodPut).Path("/set-user-status").HandlerFunc(httpTraceHdrs(adminAPI.SetUserStatus)).
+		Queries("accessKey", "{accessKey:.*}").Queries("status", "{status:.*}")
+
+	// Remove policy IAM
+	adminV1Router.Methods(http.MethodDelete).Path("/remove-canned-policy").HandlerFunc(httpTraceHdrs(adminAPI.RemoveCannedPolicy)).Queries("name", "{name:.*}")
 
 	// Remove user IAM
 	adminV1Router.Methods(http.MethodDelete).Path("/remove-user").HandlerFunc(httpTraceHdrs(adminAPI.RemoveUser)).Queries("accessKey", "{accessKey:.*}")
-	adminV1Router.Methods(http.MethodDelete).Path("/remove-user-policy").HandlerFunc(httpTraceHdrs(adminAPI.RemoveUserPolicy)).Queries("accessKey", "{accessKey:.*}")
 
 	// List users
 	adminV1Router.Methods(http.MethodGet).Path("/list-users").HandlerFunc(httpTraceHdrs(adminAPI.ListUsers))
 
+	// List policies
+	adminV1Router.Methods(http.MethodGet).Path("/list-canned-policies").HandlerFunc(httpTraceHdrs(adminAPI.ListCannedPolicies))
+
+	// If none of the routes match.
+	adminV1Router.NotFoundHandler = http.HandlerFunc(httpTraceHdrs(notFoundHandler))
 }

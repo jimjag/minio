@@ -1,5 +1,6 @@
-# Minio multi-user Quickstart Guide [![Slack](https://slack.minio.io/slack?type=svg)](https://slack.minio.io)
-This document explains how to add, revoke users. Multi-user as name implies means Minio supports long term users other than default credentials, each of these users can be configured to deny or allow access to buckets, resources.
+# Minio Multi-user Quickstart Guide [![Slack](https://slack.minio.io/slack?type=svg)](https://slack.minio.io)
+Minio supports multiple long term users in addition to default user created during server startup. New users can be added after server starts up, and server can be configured to deny or allow access to buckets and resources to each of these users. This document explains how to add/remove users and modify their access rights.
+
 
 ## Get started
 In this document we will explain in detail on how to configure multiple users.
@@ -8,14 +9,12 @@ In this document we will explain in detail on how to configure multiple users.
 - Install mc - [Minio Client Quickstart Guide](https://docs.minio.io/docs/minio-client-quickstart-guide.html)
 - Install Minio - [Minio Quickstart Guide](https://docs.minio.io/docs/minio-quickstart-guide)
 
-### 2. Create a new user and policy
-Create a new user `newuser` on Minio use `mc admin users`, with a `newuser.json`.
-```
-mc admin users add myminio newuser newuser123 /tmp/newuser.json
-```
+### 2. Create a new user with canned policy
+Use [`mc admin policies`](https://docs.minio.io/docs/minio-admin-complete-guide.html#policies) to create canned policies.
 
-An example user policy, enables `newuser` to download all objects in my-bucketname.
+Create new canned policy file `getonly.json`. This policy enables users to download all objects under `my-bucketname`.
 ```json
+cat > getonly.json << EOF
 {
   "Version": "2012-10-17",
   "Statement": [
@@ -31,12 +30,23 @@ An example user policy, enables `newuser` to download all objects in my-bucketna
     }
   ]
 }
+EOF
 ```
 
-### 3. Revoke user
-Temporarily revoke access for `newuser`.
+Create new canned policy by name `getonly` using `getonly.json` policy file.
 ```
-mc admin users revoke myminio newuser
+mc admin policies add myminio getonly getonly.json
+```
+
+Create a new user `newuser` on Minio use `mc admin users`, specify `getonly` canned policy for this `newuser`.
+```
+mc admin users add myminio newuser newuser123 getonly
+```
+
+### 3. Disable user
+Disable user `newuser`.
+```
+mc admin users disable myminio newuser
 ```
 
 ### 4. Remove user
@@ -44,3 +54,20 @@ Remove the user `newuser`.
 ```
 mc admin users remove myminio newuser
 ```
+
+### 5. Change user policy
+Change the policy for user `newuser` to `putonly` canned policy.
+```
+mc admin users policy myminio newuser putonly
+```
+
+### 5. List all users
+List all enabled and disabled users.
+```
+mc admin users list myminio
+```
+
+## Explore Further
+- [Minio STS Quickstart Guide](https://docs.minio.io/docs/minio-sts-quickstart-guide)
+- [Minio Admin Complete Guide](https://docs.minio.io/docs/minio-admin-complete-guide.html)
+- [The Minio documentation website](https://docs.minio.io)
