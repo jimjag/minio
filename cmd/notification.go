@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	"net"
 	"net/url"
 	"path"
 	"strings"
@@ -89,6 +90,60 @@ func (sys *NotificationSys) DeleteBucket(ctx context.Context, bucketName string)
 	}()
 }
 
+// ReloadFormat - calls ReloadFormat RPC call on all peers.
+func (sys *NotificationSys) ReloadFormat(dryRun bool) map[xnet.Host]error {
+	errors := make(map[xnet.Host]error)
+	var wg sync.WaitGroup
+	for addr, client := range sys.peerRPCClientMap {
+		wg.Add(1)
+		go func(addr xnet.Host, client *PeerRPCClient) {
+			defer wg.Done()
+			// Try to load format in three attempts, before giving up.
+			for i := 0; i < 3; i++ {
+				err := client.ReloadFormat(dryRun)
+				if err == nil {
+					break
+				}
+				errors[addr] = err
+				// Wait for one second and no need wait after last attempt.
+				if i < 2 {
+					time.Sleep(1 * time.Second)
+				}
+			}
+		}(addr, client)
+	}
+	wg.Wait()
+
+	return errors
+}
+
+// LoadUsers - calls LoadUsers RPC call on all peers.
+func (sys *NotificationSys) LoadUsers() map[xnet.Host]error {
+	errors := make(map[xnet.Host]error)
+	var wg sync.WaitGroup
+	for addr, client := range sys.peerRPCClientMap {
+		wg.Add(1)
+		go func(addr xnet.Host, client *PeerRPCClient) {
+			defer wg.Done()
+			// Try to load users in three attempts.
+			for i := 0; i < 3; i++ {
+				err := client.LoadUsers()
+				if err == nil {
+					break
+				}
+				errors[addr] = err
+				// Wait for one second and no need wait after last attempt.
+				if i < 2 {
+					time.Sleep(1 * time.Second)
+				}
+			}
+		}(addr, client)
+	}
+	wg.Wait()
+
+	return errors
+}
+
 // LoadCredentials - calls LoadCredentials RPC call on all peers.
 func (sys *NotificationSys) LoadCredentials() map[xnet.Host]error {
 	errors := make(map[xnet.Host]error)
@@ -97,7 +152,7 @@ func (sys *NotificationSys) LoadCredentials() map[xnet.Host]error {
 		wg.Add(1)
 		go func(addr xnet.Host, client *PeerRPCClient) {
 			defer wg.Done()
-			// Try to set credentials in three attempts.
+			// Try to load credentials in three attempts.
 			for i := 0; i < 3; i++ {
 				err := client.LoadCredentials()
 				if err == nil {
@@ -488,10 +543,10 @@ func (args eventArgs) ToEvent() event.Event {
 		host := globalMinioHost
 		if host == "" {
 			// FIXME: Send FQDN or hostname of this machine than sending IP address.
-			host = localIP4.ToSlice()[0]
+			host = sortIPs(localIP4.ToSlice())[0]
 		}
 
-		return fmt.Sprintf("%s://%s:%s", getURLScheme(globalIsSSL), host, globalMinioPort)
+		return fmt.Sprintf("%s://%s", getURLScheme(globalIsSSL), net.JoinHostPort(host, globalMinioPort))
 	}
 
 	eventTime := UTCNow()
@@ -500,6 +555,10 @@ func (args eventArgs) ToEvent() event.Event {
 	respElements := map[string]string{
 		"x-amz-request-id":        args.RespElements["requestId"],
 		"x-minio-origin-endpoint": getOriginEndpoint(), // Minio specific custom elements.
+	}
+	// Add deployment as part of
+	if globalDeploymentID != "" {
+		respElements["x-minio-deployment-id"] = globalDeploymentID
 	}
 	if args.RespElements["content-length"] != "" {
 		respElements["content-length"] = args.RespElements["content-length"]

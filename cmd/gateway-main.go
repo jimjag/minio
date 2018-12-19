@@ -112,30 +112,11 @@ func StartGateway(ctx *cli.Context, gw Gateway) {
 		cli.ShowCommandHelpAndExit(ctx, gatewayName, 1)
 	}
 
-	// Get "json" flag from command line argument and
-	// enable json and quite modes if jason flag is turned on.
-	jsonFlag := ctx.IsSet("json") || ctx.GlobalIsSet("json")
-	if jsonFlag {
-		logger.EnableJSON()
-	}
-
-	// Get quiet flag from command line argument.
-	quietFlag := ctx.IsSet("quiet") || ctx.GlobalIsSet("quiet")
-	if quietFlag {
-		logger.EnableQuiet()
-	}
-
-	// Fetch address option
-	gatewayAddr := ctx.GlobalString("address")
-	if gatewayAddr == ":"+globalMinioPort {
-		gatewayAddr = ctx.String("address")
-	}
-
 	// Handle common command args.
 	handleCommonCmdArgs(ctx)
 
 	// Get port to listen on from gateway address
-	globalMinioHost, globalMinioPort = mustSplitHostPort(gatewayAddr)
+	globalMinioHost, globalMinioPort = mustSplitHostPort(globalCLIContext.Addr)
 
 	// On macOS, if a process already listens on LOCALIPADDR:PORT, net.Listen() falls back
 	// to IPv6 address ie minio will start listening on IPv6 address whereas another
@@ -173,10 +154,11 @@ func StartGateway(ctx *cli.Context, gw Gateway) {
 	if globalEtcdClient != nil {
 		// Enable STS router if etcd is enabled.
 		registerSTSRouter(router)
-
-		// Enable admin router if etcd is enabled.
-		registerAdminRouter(router)
 	}
+
+	// Enable IAM admin APIs if etcd is enabled, if not just enable basic
+	// operations such as profiling, server info etc.
+	registerAdminRouter(router, globalEtcdClient != nil)
 
 	// Add healthcheck router
 	registerHealthCheckRouter(router)
@@ -206,7 +188,7 @@ func StartGateway(ctx *cli.Context, gw Gateway) {
 		getCert = globalTLSCerts.GetCertificate
 	}
 
-	globalHTTPServer = xhttp.NewServer([]string{gatewayAddr}, criticalErrorHandler{registerHandlers(router, globalHandlers...)}, getCert)
+	globalHTTPServer = xhttp.NewServer([]string{globalCLIContext.Addr}, criticalErrorHandler{registerHandlers(router, globalHandlers...)}, getCert)
 	globalHTTPServer.UpdateBytesReadFunc = globalConnStats.incInputBytes
 	globalHTTPServer.UpdateBytesWrittenFunc = globalConnStats.incOutputBytes
 	go func() {
@@ -214,6 +196,22 @@ func StartGateway(ctx *cli.Context, gw Gateway) {
 	}()
 
 	signal.Notify(globalOSSignalCh, os.Interrupt, syscall.SIGTERM)
+
+	// !!! Do not move this block !!!
+	// For all gateways, the config needs to be loaded from env
+	// prior to initializing the gateway layer
+	{
+		// Initialize server config.
+		srvCfg := newServerConfig()
+
+		// Override any values from ENVs.
+		srvCfg.loadFromEnvs()
+
+		// hold the mutex lock before a new config is assigned.
+		globalServerConfigMu.Lock()
+		globalServerConfig = srvCfg
+		globalServerConfigMu.Unlock()
+	}
 
 	newObject, err := gw.NewGatewayLayer(globalServerConfig.GetCredential())
 	if err != nil {
@@ -223,27 +221,14 @@ func StartGateway(ctx *cli.Context, gw Gateway) {
 		globalHTTPServer.Shutdown()
 		logger.FatalIf(err, "Unable to initialize gateway backend")
 	}
-	// Create a new config system.
-	globalConfigSys = NewConfigSys()
+
 	if globalEtcdClient != nil && gatewayName == "nas" {
-		// Initialize server config.
+		// Create a new config system.
+		globalConfigSys = NewConfigSys()
+
+		// Load globalServerConfig from etcd
 		_ = globalConfigSys.Init(newObject)
-	} else {
-		// Initialize server config.
-		srvCfg := newServerConfig()
-
-		// Override any values from ENVs.
-		srvCfg.loadFromEnvs()
-
-		// Load values to cached global values.
-		srvCfg.loadToCachedConfigs()
-
-		// hold the mutex lock before a new config is assigned.
-		globalServerConfigMu.Lock()
-		globalServerConfig = srvCfg
-		globalServerConfigMu.Unlock()
 	}
-
 	// Load logger subsystem
 	loadLoggers()
 
@@ -290,7 +275,7 @@ func StartGateway(ctx *cli.Context, gw Gateway) {
 	globalObjLayerMutex.Unlock()
 
 	// Prints the formatted startup message once object layer is initialized.
-	if !quietFlag {
+	if !globalCLIContext.Quiet {
 		mode := globalMinioModeGatewayPrefix + gatewayName
 		// Check update mode.
 		checkUpdate(mode)
@@ -303,6 +288,9 @@ func StartGateway(ctx *cli.Context, gw Gateway) {
 		// Print gateway startup message.
 		printGatewayStartupMessage(getAPIEndpoints(), gatewayName)
 	}
+
+	// Set uptime time after object layer has initialized.
+	globalBootTime = UTCNow()
 
 	handleSignals()
 }
