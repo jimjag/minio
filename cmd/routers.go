@@ -101,7 +101,7 @@ func configureServerHandler(endpoints EndpointList) (http.Handler, error) {
 		registerDistXLRouters(router, endpoints)
 	}
 
-	// Add STS router only enabled if etcd is configured.
+	// Add STS router always.
 	registerSTSRouter(router)
 
 	// Add Admin RPC router
@@ -123,8 +123,8 @@ func configureServerHandler(endpoints EndpointList) (http.Handler, error) {
 		}
 	}
 
-	// Add API router.
-	registerAPIRouter(router)
+	// Add API router, additionally all server mode support encryption.
+	registerAPIRouter(router, true)
 
 	// Register rest of the handlers.
 	return registerHandlers(router, globalHandlers...), nil
