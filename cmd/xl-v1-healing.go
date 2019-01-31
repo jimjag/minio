@@ -22,6 +22,7 @@ import (
 	"io"
 	"path"
 	"sync"
+	"time"
 
 	"github.com/minio/minio/cmd/logger"
 	"github.com/minio/minio/pkg/madmin"
@@ -133,30 +134,19 @@ func healBucket(ctx context.Context, storageDisks []StorageAPI, bucket string, w
 		DiskCount: len(storageDisks),
 	}
 	for i, before := range beforeState {
-		if storageDisks[i] == nil {
+		if storageDisks[i] != nil {
+			drive := storageDisks[i].String()
 			res.Before.Drives = append(res.Before.Drives, madmin.HealDriveInfo{
 				UUID:     "",
-				Endpoint: "",
+				Endpoint: drive,
 				State:    before,
 			})
 			res.After.Drives = append(res.After.Drives, madmin.HealDriveInfo{
 				UUID:     "",
-				Endpoint: "",
+				Endpoint: drive,
 				State:    afterState[i],
 			})
-			continue
 		}
-		drive := storageDisks[i].String()
-		res.Before.Drives = append(res.Before.Drives, madmin.HealDriveInfo{
-			UUID:     "",
-			Endpoint: drive,
-			State:    before,
-		})
-		res.After.Drives = append(res.After.Drives, madmin.HealDriveInfo{
-			UUID:     "",
-			Endpoint: drive,
-			State:    afterState[i],
-		})
 	}
 
 	reducedErr := reduceWriteQuorumErrs(ctx, dErrs, bucketOpIgnoredErrs, writeQuorum)
@@ -248,6 +238,30 @@ func listAllBuckets(storageDisks []StorageAPI) (buckets map[string]VolInfo,
 	return buckets, bucketsOcc, nil
 }
 
+// Only heal on disks where we are sure that healing is needed. We can expand
+// this list as and when we figure out more errors can be added to this list safely.
+func shouldHealObjectOnDisk(xlErr, dataErr error, meta xlMetaV1, quorumModTime time.Time) bool {
+	switch xlErr {
+	case errFileNotFound:
+		return true
+	case errCorruptedFormat:
+		return true
+	}
+	if xlErr == nil {
+		// If xl.json was read fine but there is some problem with the part.N files.
+		if dataErr == errFileNotFound {
+			return true
+		}
+		if _, ok := dataErr.(hashMismatchError); ok {
+			return true
+		}
+		if quorumModTime != meta.Stat.ModTime {
+			return true
+		}
+	}
+	return false
+}
+
 // Heals an object by re-writing corrupt/missing erasure blocks.
 func healObject(ctx context.Context, storageDisks []StorageAPI, bucket string, object string,
 	quorum int, dryRun bool) (result madmin.HealResultItem, err error) {
@@ -316,17 +330,13 @@ func healObject(ctx context.Context, storageDisks []StorageAPI, bucket string, o
 			driveState = madmin.DriveStateCorrupt
 		}
 
-		// an online disk without valid data/metadata is
-		// outdated and can be healed.
-		if errs[i] != errDiskNotFound && v == nil {
+		var drive string
+		if storageDisks[i] != nil {
+			drive = storageDisks[i].String()
+		}
+		if shouldHealObjectOnDisk(errs[i], dataErrs[i], partsMetadata[i], modTime) {
 			outDatedDisks[i] = storageDisks[i]
 			disksToHealCount++
-		}
-		var drive string
-		if v == nil {
-			if errs[i] != errDiskNotFound {
-				drive = outDatedDisks[i].String()
-			}
 			result.Before.Drives = append(result.Before.Drives, madmin.HealDriveInfo{
 				UUID:     "",
 				Endpoint: drive,
@@ -339,7 +349,6 @@ func healObject(ctx context.Context, storageDisks []StorageAPI, bucket string, o
 			})
 			continue
 		}
-		drive = v.String()
 		result.Before.Drives = append(result.Before.Drives, madmin.HealDriveInfo{
 			UUID:     "",
 			Endpoint: drive,
@@ -526,44 +535,55 @@ func (xl xlObjects) healObjectDir(ctx context.Context, bucket, object string, dr
 		ObjectSize:   0,
 	}
 
+	hr.Before.Drives = make([]madmin.HealDriveInfo, len(storageDisks))
+	hr.After.Drives = make([]madmin.HealDriveInfo, len(storageDisks))
+
+	var wg sync.WaitGroup
+
 	// Prepare object creation in all disks
-	for _, disk := range storageDisks {
-		if disk == nil {
-			hr.Before.Drives = append(hr.Before.Drives, madmin.HealDriveInfo{
-				UUID:  "",
-				State: madmin.DriveStateOffline,
-			})
-			hr.After.Drives = append(hr.After.Drives, madmin.HealDriveInfo{
-				UUID:  "",
-				State: madmin.DriveStateMissing,
-			})
-			continue
-		}
-
-		drive := disk.String()
-		hr.Before.Drives = append(hr.Before.Drives, madmin.HealDriveInfo{
-			UUID:     "",
-			Endpoint: drive,
-			State:    madmin.DriveStateMissing,
-		})
-		hr.After.Drives = append(hr.After.Drives, madmin.HealDriveInfo{
-			UUID:     "",
-			Endpoint: drive,
-			State:    madmin.DriveStateMissing,
-		})
-
-		if !dryRun {
-			if err := disk.MakeVol(pathJoin(bucket, object)); err != nil && err != errVolumeExists {
-				return hr, toObjectErr(err, bucket, object)
+	for i, d := range storageDisks {
+		wg.Add(1)
+		go func(idx int, disk StorageAPI) {
+			defer wg.Done()
+			if disk == nil {
+				hr.Before.Drives[idx] = madmin.HealDriveInfo{State: madmin.DriveStateOffline}
+				hr.After.Drives[idx] = madmin.HealDriveInfo{State: madmin.DriveStateOffline}
+				return
 			}
 
-			for i, v := range hr.Before.Drives {
-				if v.Endpoint == drive {
-					hr.After.Drives[i].State = madmin.DriveStateOk
-				}
+			drive := disk.String()
+			hr.Before.Drives[idx] = madmin.HealDriveInfo{UUID: "", Endpoint: drive, State: madmin.DriveStateOffline}
+			hr.After.Drives[idx] = madmin.HealDriveInfo{UUID: "", Endpoint: drive, State: madmin.DriveStateOffline}
+
+			_, statErr := disk.StatVol(pathJoin(bucket, object))
+			switch statErr {
+			case nil:
+				hr.Before.Drives[idx].State = madmin.DriveStateOk
+				hr.After.Drives[idx].State = madmin.DriveStateOk
+				// Object is fine in this disk, nothing to be done anymore, exiting
+				return
+			case errVolumeNotFound:
+				hr.Before.Drives[idx].State = madmin.DriveStateMissing
+				hr.After.Drives[idx].State = madmin.DriveStateMissing
+			default:
+				logger.LogIf(ctx, err)
+				return
 			}
-		}
+
+			if dryRun {
+				return
+			}
+
+			if err := disk.MakeVol(pathJoin(bucket, object)); err == nil || err == errVolumeExists {
+				hr.After.Drives[idx].State = madmin.DriveStateOk
+			} else {
+				logger.LogIf(ctx, err)
+				hr.After.Drives[idx].State = madmin.DriveStateOffline
+			}
+		}(i, d)
 	}
+
+	wg.Wait()
 	return hr, nil
 }
 
