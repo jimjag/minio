@@ -71,7 +71,7 @@ func (api *DummyObjectLayer) GetObjectInfo(ctx context.Context, bucket, object s
 	return
 }
 
-func (api *DummyObjectLayer) PutObject(ctx context.Context, bucket, object string, data *PutObjReader, metadata map[string]string, opts ObjectOptions) (objInfo ObjectInfo, err error) {
+func (api *DummyObjectLayer) PutObject(ctx context.Context, bucket, object string, data *PutObjReader, opts ObjectOptions) (objInfo ObjectInfo, err error) {
 	return
 }
 
@@ -87,7 +87,7 @@ func (api *DummyObjectLayer) ListMultipartUploads(ctx context.Context, bucket, p
 	return
 }
 
-func (api *DummyObjectLayer) NewMultipartUpload(ctx context.Context, bucket, object string, metadata map[string]string, opts ObjectOptions) (uploadID string, err error) {
+func (api *DummyObjectLayer) NewMultipartUpload(ctx context.Context, bucket, object string, opts ObjectOptions) (uploadID string, err error) {
 	return
 }
 
@@ -119,11 +119,11 @@ func (api *DummyObjectLayer) HealFormat(ctx context.Context, dryRun bool) (item 
 	return
 }
 
-func (api *DummyObjectLayer) HealBucket(ctx context.Context, bucket string, dryRun bool) (items []madmin.HealResultItem, err error) {
+func (api *DummyObjectLayer) HealBucket(ctx context.Context, bucket string, dryRun, remove bool) (items madmin.HealResultItem, err error) {
 	return
 }
 
-func (api *DummyObjectLayer) HealObject(ctx context.Context, bucket, object string, dryRun bool) (item madmin.HealResultItem, err error) {
+func (api *DummyObjectLayer) HealObject(ctx context.Context, bucket, object string, dryRun, remove bool) (item madmin.HealResultItem, err error) {
 	return
 }
 

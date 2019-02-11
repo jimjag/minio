@@ -116,6 +116,12 @@
 			"revisionTime": "2017-09-25T03:23:15Z"
 		},
 		{
+			"checksumSHA1": "mSo9Sti7F6+laUs4NLx/p23rHD0=",
+			"path": "github.com/bcicen/jstream",
+			"revision": "f306cd3e1fa602a1b513114521a0d6a5a9d5c919",
+			"revisionTime": "2019-02-06T02:23:53Z"
+		},
+		{
 			"checksumSHA1": "0rido7hYHQtfq3UJzVT5LClLAWc=",
 			"path": "github.com/beorn7/perks/quantile",
 			"revision": "3a771d992973f24aa725d07868b467d1ddfceafb",
@@ -298,12 +304,6 @@
 			"revisionTime": "2017-02-16T21:49:44Z"
 		},
 		{
-			"checksumSHA1": "81OSg/NapmTaRpSS+oYsPVE0b1Y=",
-			"path": "github.com/garyburd/redigo/redis",
-			"revision": "0d253a66e6e1349f4581d6d2b300ee434ee2da9f",
-			"revisionTime": "2017-02-16T21:49:44Z"
-		},
-		{
 			"checksumSHA1": "+IH9gXMht4fL/fxKRZ4sqGBps1g=",
 			"path": "github.com/go-ini/ini",
 			"revision": "e7fea39b01aea8d5671f6858f0532f56e8bff3a5",
@@ -374,6 +374,12 @@
 			"path": "github.com/golang/snappy",
 			"revision": "2e65f85255dbc3072edf28d6b5b8efc472979f5a",
 			"revisionTime": "2018-05-18T05:39:59Z"
+		},
+		{
+			"checksumSHA1": "umngZiUg6r0nzonwk/rSEpykaVk=",
+			"path": "github.com/gomodule/redigo/redis",
+			"revision": "43fe51054af5fb7acdc89c38a3f8098fbf997a53",
+			"revisionTime": "2019-02-05T13:53:52Z"
 		},
 		{
 			"checksumSHA1": "0x0CoHbgoWngucjKSDPFodeL8ek=",
@@ -656,10 +662,10 @@
 			"revisionTime": "2019-01-20T10:05:29Z"
 		},
 		{
-			"checksumSHA1": "ik77jlf0oMQTlSndP85DlIVOnOY=",
+			"checksumSHA1": "FO6q7sC2QTZMGDWv+/cGWJfjTCk=",
 			"path": "github.com/minio/parquet-go",
-			"revision": "7a17a919eeed02c393f3117a9ed1ac6df0da9aa5",
-			"revisionTime": "2019-01-18T04:40:39Z"
+			"revision": "d5e4e922da820530a1851afc22499c826c08f1e8",
+			"revisionTime": "2019-02-10T14:56:30Z"
 		},
 		{
 			"checksumSHA1": "N4WRPw4p3AN958RH/O53kUsJacQ=",
@@ -824,26 +830,16 @@
 			"revisionTime": "2018-04-08T09:29:02Z"
 		},
 		{
-			"checksumSHA1": "lOtA2sG01oAO4Z/VSGqvX45CjfA=",
-			"path": "github.com/rasky/go-lzo",
-			"revision": "affec0788321cffe2c68821be1e07e87127b17f0",
-			"revisionTime": "2015-10-23T00:10:55Z"
-		},
-		{
 			"checksumSHA1": "D8AVDI39CJ+jvw0HOotYU2gz54c=",
 			"path": "github.com/rjeczalik/notify",
 			"revision": "4e54e7fd043e865c50bda93359fb78813a8d165b",
 			"revisionTime": "2018-08-08T20:39:25Z"
 		},
 		{
+			"checksumSHA1": "hev23KrSfQ4KfosxH+gJKziFVtA=",
 			"path": "github.com/rs/cors",
-			"revision": "a62a804a8a009876ca59105f7899938a1349f4b3",
-			"revisionTime": "2016-06-18T04:49:35+05:30"
-		},
-		{
-			"path": "github.com/rs/xhandler",
-			"revision": "ed27b6fd65218132ee50cd95f38474a3d8a2cd12",
-			"revisionTime": "2016-06-18T12:32:21-07:00"
+			"revision": "76f58f330d76a55c5badc74f6212e8a15e742c77",
+			"revisionTime": "2019-01-16T17:59:10Z"
 		},
 		{
 			"checksumSHA1": "6JP37UqrI0H80Gpk0Y2P+KXgn5M=",
@@ -899,30 +895,6 @@
 			"path": "github.com/valyala/tcplisten",
 			"revision": "ceec8f93295a060cdb565ec25e4ccf17941dbd55",
 			"revisionTime": "2016-11-14T21:01:44Z"
-		},
-		{
-			"checksumSHA1": "L/Q8Ylbo+wnj5whDFfMxxwyxmdo=",
-			"path": "github.com/xwb1989/sqlparser/dependency/bytes2",
-			"revision": "120387863bf27d04bc07db8015110a6e96d0146c",
-			"revisionTime": "2018-06-06T15:21:19Z"
-		},
-		{
-			"checksumSHA1": "f9K0yQdwD0Z2yc3bmDw2uqXt4hU=",
-			"path": "github.com/xwb1989/sqlparser/dependency/hack",
-			"revision": "120387863bf27d04bc07db8015110a6e96d0146c",
-			"revisionTime": "2018-06-06T15:21:19Z"
-		},
-		{
-			"checksumSHA1": "xpu1JU/VZ7gGNbU5Ol9Nm1oS4tY=",
-			"path": "github.com/xwb1989/sqlparser/dependency/querypb",
-			"revision": "120387863bf27d04bc07db8015110a6e96d0146c",
-			"revisionTime": "2018-06-06T15:21:19Z"
-		},
-		{
-			"checksumSHA1": "KbNIySCQgMG81TRMJp1IDRfSgv8=",
-			"path": "github.com/xwb1989/sqlparser/dependency/sqltypes",
-			"revision": "120387863bf27d04bc07db8015110a6e96d0146c",
-			"revisionTime": "2018-06-06T15:21:19Z"
 		},
 		{
 			"checksumSHA1": "aggkkQOGetHku/ZafO6GKmI2eBk=",

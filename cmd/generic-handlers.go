@@ -381,37 +381,9 @@ type resourceHandler struct {
 	handler http.Handler
 }
 
-// List of default allowable HTTP methods.
-var defaultAllowableHTTPMethods = []string{
-	http.MethodGet,
-	http.MethodPut,
-	http.MethodHead,
-	http.MethodPost,
-	http.MethodDelete,
-	http.MethodOptions,
-}
-
 // setCorsHandler handler for CORS (Cross Origin Resource Sharing)
 func setCorsHandler(h http.Handler) http.Handler {
-	commonS3Headers := []string{
-		"Date",
-		"ETag",
-		"Server",
-		"Connection",
-		"Accept-Ranges",
-		"Content-Range",
-		"Content-Encoding",
-		"Content-Length",
-		"Content-Type",
-		"x-amz-request-id",
-	}
-	c := cors.New(cors.Options{
-		AllowedOrigins:   []string{"*"},
-		AllowedMethods:   defaultAllowableHTTPMethods,
-		AllowedHeaders:   []string{"*"},
-		ExposedHeaders:   commonS3Headers,
-		AllowCredentials: true,
-	})
+	c := cors.AllowAll()
 	return c.Handler(h)
 }
 
@@ -426,8 +398,24 @@ func setIgnoreResourcesHandler(h http.Handler) http.Handler {
 // Checks requests for not implemented Bucket resources
 func ignoreNotImplementedBucketResources(req *http.Request) bool {
 	for name := range req.URL.Query() {
-		// Enable GetBucketACL dummy call specifically.
-		if name == "acl" && req.Method == http.MethodGet {
+		// Enable GetBucketACL, GetBucketCors, GetBucketWebsite,
+		// GetBucketAcccelerate, GetBucketRequestPayment,
+		// GetBucketLogging, GetBucketLifecycle,
+		// GetBucketReplication, GetBucketTagging,
+		// GetBucketVersioning, DeleteBucketTagging,
+		// and DeleteBucketWebsite dummy calls specifically.
+		if ((name == "acl" ||
+			name == "cors" ||
+			name == "website" ||
+			name == "accelerate" ||
+			name == "requestPayment" ||
+			name == "logging" ||
+			name == "lifecycle" ||
+			name == "replication" ||
+			name == "tagging" ||
+			name == "versioning") && req.Method == http.MethodGet) ||
+			((name == "tagging" ||
+				name == "website") && req.Method == http.MethodDelete) {
 			return false
 		}
 
@@ -441,8 +429,8 @@ func ignoreNotImplementedBucketResources(req *http.Request) bool {
 // Checks requests for not implemented Object resources
 func ignoreNotImplementedObjectResources(req *http.Request) bool {
 	for name := range req.URL.Query() {
-		// Enable GetObjectACL dummy call specifically.
-		if name == "acl" && req.Method == http.MethodGet {
+		// Enable GetObjectACL and GetObjectTagging dummy calls specifically.
+		if (name == "acl" || name == "tagging") && req.Method == http.MethodGet {
 			return false
 		}
 		if notimplementedObjectResourceNames[name] {
@@ -454,28 +442,28 @@ func ignoreNotImplementedObjectResources(req *http.Request) bool {
 
 // List of not implemented bucket queries
 var notimplementedBucketResourceNames = map[string]bool{
+	"accelerate":     true,
 	"acl":            true,
 	"cors":           true,
+	"inventory":      true,
 	"lifecycle":      true,
 	"logging":        true,
-	"replication":    true,
-	"tagging":        true,
-	"versions":       true,
-	"requestPayment": true,
-	"versioning":     true,
-	"website":        true,
-	"inventory":      true,
 	"metrics":        true,
-	"accelerate":     true,
+	"replication":    true,
+	"requestPayment": true,
+	"tagging":        true,
+	"versioning":     true,
+	"versions":       true,
+	"website":        true,
 }
 
 // List of not implemented object queries
 var notimplementedObjectResourceNames = map[string]bool{
-	"torrent": true,
 	"acl":     true,
 	"policy":  true,
-	"tagging": true,
 	"restore": true,
+	"tagging": true,
+	"torrent": true,
 }
 
 // Resource handler ServeHTTP() wrapper

@@ -31,6 +31,8 @@ import (
 	"strconv"
 	"strings"
 
+	"time"
+
 	snappy "github.com/golang/snappy"
 	"github.com/gorilla/mux"
 	miniogo "github.com/minio/minio-go"
@@ -100,7 +102,7 @@ func (api objectAPIHandlers) SelectObjectContentHandler(w http.ResponseWriter, r
 	object := vars["object"]
 
 	// get gateway encryption options
-	opts, err := getEncryptionOpts(ctx, r, bucket, object)
+	opts, err := getOpts(ctx, r, bucket, object)
 	if err != nil {
 		writeErrorResponseHeadersOnly(w, toAPIErrorCode(ctx, err))
 		return
@@ -196,7 +198,7 @@ func (api objectAPIHandlers) SelectObjectContentHandler(w http.ResponseWriter, r
 			w.WriteHeader(serr.HTTPStatusCode())
 			w.Write(s3select.NewErrorMessage(serr.ErrorCode(), serr.ErrorMessage()))
 		} else {
-			writeErrorResponse(w, ErrInternalError, r.URL, guessIsBrowserReq(r))
+			writeErrorResponse(w, toAPIErrorCode(ctx, err), r.URL, guessIsBrowserReq(r))
 		}
 		return
 	}
@@ -255,7 +257,7 @@ func (api objectAPIHandlers) GetObjectHandler(w http.ResponseWriter, r *http.Req
 	}
 
 	// get gateway encryption options
-	opts, err := getEncryptionOpts(ctx, r, bucket, object)
+	opts, err := getOpts(ctx, r, bucket, object)
 	if err != nil {
 		writeErrorResponseHeadersOnly(w, toAPIErrorCode(ctx, err))
 		return
@@ -439,7 +441,7 @@ func (api objectAPIHandlers) HeadObjectHandler(w http.ResponseWriter, r *http.Re
 		getObjectInfo = api.CacheAPI().GetObjectInfo
 	}
 
-	opts, err := getEncryptionOpts(ctx, r, bucket, object)
+	opts, err := getOpts(ctx, r, bucket, object)
 	if err != nil {
 		writeErrorResponseHeadersOnly(w, toAPIErrorCode(ctx, err))
 		return
@@ -705,7 +707,7 @@ func (api objectAPIHandlers) CopyObjectHandler(w http.ResponseWriter, r *http.Re
 	}
 
 	var srcOpts, dstOpts ObjectOptions
-	srcOpts, err := copySrcEncryptionOpts(ctx, r, srcBucket, srcObject)
+	srcOpts, err := copySrcOpts(ctx, r, srcBucket, srcObject)
 	if err != nil {
 		logger.LogIf(ctx, err)
 		writeErrorResponse(w, toAPIErrorCode(ctx, err), r.URL, guessIsBrowserReq(r))
@@ -717,7 +719,7 @@ func (api objectAPIHandlers) CopyObjectHandler(w http.ResponseWriter, r *http.Re
 	if getSSE != srcOpts.ServerSideEncryption {
 		getOpts.ServerSideEncryption = getSSE
 	}
-	dstOpts, err = copyDstEncryptionOpts(ctx, r, dstBucket, dstObject, nil)
+	dstOpts, err = copyDstOpts(ctx, r, dstBucket, dstObject, nil)
 	if err != nil {
 		logger.LogIf(ctx, err)
 		writeErrorResponse(w, toAPIErrorCode(ctx, err), r.URL, guessIsBrowserReq(r))
@@ -1237,7 +1239,7 @@ func (api objectAPIHandlers) PutObjectHandler(w http.ResponseWriter, r *http.Req
 	}
 	// get gateway encryption options
 	var opts ObjectOptions
-	opts, err = putEncryptionOpts(ctx, r, bucket, object, nil)
+	opts, err = putOpts(ctx, r, bucket, object, metadata)
 	if err != nil {
 		writeErrorResponseHeadersOnly(w, toAPIErrorCode(ctx, err))
 		return
@@ -1277,7 +1279,7 @@ func (api objectAPIHandlers) PutObjectHandler(w http.ResponseWriter, r *http.Req
 	}
 
 	// Create the object..
-	objInfo, err := putObject(ctx, bucket, object, pReader, metadata, opts)
+	objInfo, err := putObject(ctx, bucket, object, pReader, opts)
 	if err != nil {
 		writeErrorResponse(w, toAPIErrorCode(ctx, err), r.URL, guessIsBrowserReq(r))
 		return
@@ -1369,7 +1371,7 @@ func (api objectAPIHandlers) NewMultipartUploadHandler(w http.ResponseWriter, r 
 	var opts ObjectOptions
 	var err error
 
-	opts, err = putEncryptionOpts(ctx, r, bucket, object, nil)
+	opts, err = putOpts(ctx, r, bucket, object, nil)
 	if err != nil {
 		writeErrorResponseHeadersOnly(w, toAPIErrorCode(ctx, err))
 		return
@@ -1426,11 +1428,16 @@ func (api objectAPIHandlers) NewMultipartUploadHandler(w http.ResponseWriter, r 
 		metadata[ReservedMetadataPrefix+"compression"] = compressionAlgorithmV1
 	}
 
+	opts, err = putOpts(ctx, r, bucket, object, metadata)
+	if err != nil {
+		writeErrorResponseHeadersOnly(w, toAPIErrorCode(ctx, err))
+		return
+	}
 	newMultipartUpload := objectAPI.NewMultipartUpload
 	if api.CacheAPI() != nil && !hasServerSideEncryptionHeader(r.Header) {
 		newMultipartUpload = api.CacheAPI().NewMultipartUpload
 	}
-	uploadID, err := newMultipartUpload(ctx, bucket, object, metadata, opts)
+	uploadID, err := newMultipartUpload(ctx, bucket, object, opts)
 	if err != nil {
 		writeErrorResponse(w, toAPIErrorCode(ctx, err), r.URL, guessIsBrowserReq(r))
 		return
@@ -1529,7 +1536,7 @@ func (api objectAPIHandlers) CopyObjectPartHandler(w http.ResponseWriter, r *htt
 	}
 
 	var srcOpts, dstOpts ObjectOptions
-	srcOpts, err = copySrcEncryptionOpts(ctx, r, srcBucket, srcObject)
+	srcOpts, err = copySrcOpts(ctx, r, srcBucket, srcObject)
 	if err != nil {
 		writeErrorResponse(w, toAPIErrorCode(ctx, err), r.URL, guessIsBrowserReq(r))
 		return
@@ -1539,7 +1546,7 @@ func (api objectAPIHandlers) CopyObjectPartHandler(w http.ResponseWriter, r *htt
 	if srcOpts.ServerSideEncryption != nil {
 		getOpts.ServerSideEncryption = encrypt.SSE(srcOpts.ServerSideEncryption)
 	}
-	dstOpts, err = copyDstEncryptionOpts(ctx, r, dstBucket, dstObject, nil)
+	dstOpts, err = copyDstOpts(ctx, r, dstBucket, dstObject, nil)
 	if err != nil {
 		writeErrorResponse(w, toAPIErrorCode(ctx, err), r.URL, guessIsBrowserReq(r))
 		return
@@ -1667,13 +1674,12 @@ func (api objectAPIHandlers) CopyObjectPartHandler(w http.ResponseWriter, r *htt
 			return
 		}
 		li.UserDefined = CleanMinioInternalMetadataKeys(li.UserDefined)
-		dstOpts, err = copyDstEncryptionOpts(ctx, r, dstBucket, dstObject, li.UserDefined)
+		dstOpts, err = copyDstOpts(ctx, r, dstBucket, dstObject, li.UserDefined)
 		if err != nil {
 			writeErrorResponse(w, toAPIErrorCode(ctx, err), r.URL, guessIsBrowserReq(r))
 			return
 		}
 		if crypto.IsEncrypted(li.UserDefined) {
-			isEncrypted = true
 			if !crypto.SSEC.IsRequested(r.Header) && crypto.SSEC.IsEncrypted(li.UserDefined) {
 				writeErrorResponse(w, ErrSSEMultipartEncrypted, r.URL, guessIsBrowserReq(r))
 				return
@@ -1682,7 +1688,7 @@ func (api objectAPIHandlers) CopyObjectPartHandler(w http.ResponseWriter, r *htt
 				writeErrorResponse(w, ErrSSEMultipartEncrypted, r.URL, guessIsBrowserReq(r))
 				return
 			}
-			isEncrypted = true // to detect SSE-S3 encryption
+			isEncrypted = true
 			var key []byte
 			if crypto.SSEC.IsRequested(r.Header) {
 				key, err = ParseSSECustomerRequest(r)
@@ -1862,7 +1868,7 @@ func (api objectAPIHandlers) PutObjectPartHandler(w http.ResponseWriter, r *http
 	// get encryption options
 	var opts ObjectOptions
 	if crypto.SSEC.IsRequested(r.Header) {
-		opts, err = putEncryptionOpts(ctx, r, bucket, object, nil)
+		opts, err = putOpts(ctx, r, bucket, object, nil)
 		if err != nil {
 			writeErrorResponse(w, toAPIErrorCode(ctx, err), r.URL, guessIsBrowserReq(r))
 			return
@@ -1937,7 +1943,7 @@ func (api objectAPIHandlers) PutObjectPartHandler(w http.ResponseWriter, r *http
 			}
 
 			isEncrypted = true // to detect SSE-S3 encryption
-			opts, err = putEncryptionOpts(ctx, r, bucket, object, li.UserDefined)
+			opts, err = putOpts(ctx, r, bucket, object, li.UserDefined)
 			if err != nil {
 				writeErrorResponse(w, toAPIErrorCode(ctx, err), r.URL, guessIsBrowserReq(r))
 				return
@@ -2129,6 +2135,36 @@ func (api objectAPIHandlers) ListObjectPartsHandler(w http.ResponseWriter, r *ht
 	writeSuccessResponseXML(w, encodedSuccessResponse)
 }
 
+// Send white spaces every 10 seconds to the client till completeMultiPartUpload() is done so that the client does not time out.
+// Downside is we might send 200OK and then send error XML. But accoording to S3 spec
+// the client is supposed to check for error XML even if it received 200OK. But for erasure this is not a
+// problem as completeMultiPartUpload() is quick. Even For FS, it would not be an issue
+// as we do background append as and when the parts arrive and completeMultiPartUpload is quick.
+// Only in a rare case where parts would be out of order will FS' completeMultiPartUpload() take a longer time.
+func sendWhiteSpace(ctx context.Context, w http.ResponseWriter) <-chan struct{} {
+	doneCh := make(chan struct{})
+	go func() {
+		ticker := time.NewTicker(time.Second * 10)
+		for {
+			select {
+			case <-ticker.C:
+				// Write a white space char to the client to prevent client timeouts
+				// when the server takes a long time to completeMultiPartUpload()
+				if _, err := w.Write([]byte("\n\r")); err != nil {
+					logger.LogIf(ctx, err)
+					return
+				}
+				w.(http.Flusher).Flush()
+			case doneCh <- struct{}{}:
+				ticker.Stop()
+				return
+			}
+		}
+
+	}()
+	return doneCh
+}
+
 // CompleteMultipartUploadHandler - Complete multipart upload.
 func (api objectAPIHandlers) CompleteMultipartUploadHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := newContext(r, w, "CompleteMultipartUpload")
@@ -2194,8 +2230,6 @@ func (api objectAPIHandlers) CompleteMultipartUploadHandler(w http.ResponseWrite
 			return
 		}
 		if crypto.IsEncrypted(li.UserDefined) {
-			isEncrypted = true
-			ssec = crypto.SSEC.IsEncrypted(li.UserDefined)
 			var key []byte
 			isEncrypted = true
 			ssec = crypto.SSEC.IsEncrypted(li.UserDefined)
@@ -2258,7 +2292,11 @@ func (api objectAPIHandlers) CompleteMultipartUploadHandler(w http.ResponseWrite
 	if api.CacheAPI() != nil {
 		completeMultiPartUpload = api.CacheAPI().CompleteMultipartUpload
 	}
+	completeDoneCh := sendWhiteSpace(ctx, w)
 	objInfo, err := completeMultiPartUpload(ctx, bucket, object, uploadID, completeParts, opts)
+	// Stop writing white spaces to the client. Note that close(doneCh) style is not used as it
+	// can cause white space to be written after we send XML response in a race condition.
+	<-completeDoneCh
 	if err != nil {
 		switch oErr := err.(type) {
 		case PartTooSmall:
