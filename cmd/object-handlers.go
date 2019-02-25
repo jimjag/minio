@@ -2094,7 +2094,7 @@ func (api objectAPIHandlers) ListObjectPartsHandler(w http.ResponseWriter, r *ht
 		return
 	}
 
-	uploadID, partNumberMarker, maxParts, _, s3Error := getObjectResources(r.URL.Query())
+	uploadID, partNumberMarker, maxParts, encodingType, s3Error := getObjectResources(r.URL.Query())
 	if s3Error != ErrNone {
 		writeErrorResponse(ctx, w, errorCodes.ToAPIErr(s3Error), r.URL, guessIsBrowserReq(r))
 		return
@@ -2145,7 +2145,7 @@ func (api objectAPIHandlers) ListObjectPartsHandler(w http.ResponseWriter, r *ht
 		}
 	}
 
-	response := generateListPartsResponse(listPartsInfo)
+	response := generateListPartsResponse(listPartsInfo, encodingType)
 	encodedSuccessResponse := encodeResponse(response)
 
 	// Write success response.
@@ -2370,7 +2370,7 @@ func (api objectAPIHandlers) CompleteMultipartUploadHandler(w http.ResponseWrite
 	}
 
 	// Get object location.
-	location := getObjectLocation(r, globalDomainName, bucket, object)
+	location := getObjectLocation(r, globalDomainNames, bucket, object)
 	// Generate complete multipart response.
 	response := generateCompleteMultpartUploadResponse(bucket, object, location, objInfo.ETag)
 	var encodedSuccessResponse []byte
