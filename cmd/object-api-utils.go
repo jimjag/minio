@@ -34,6 +34,7 @@ import (
 	"unicode/utf8"
 
 	snappy "github.com/golang/snappy"
+	"github.com/minio/minio-go/pkg/s3utils"
 	"github.com/minio/minio/cmd/crypto"
 	"github.com/minio/minio/cmd/logger"
 	"github.com/minio/minio/pkg/dns"
@@ -273,10 +274,16 @@ func isStringEqual(s1 string, s2 string) bool {
 }
 
 // Ignores all reserved bucket names or invalid bucket names.
-func isReservedOrInvalidBucket(bucketEntry string) bool {
+func isReservedOrInvalidBucket(bucketEntry string, strict bool) bool {
 	bucketEntry = strings.TrimSuffix(bucketEntry, slashSeparator)
-	if !IsValidBucketName(bucketEntry) {
-		return true
+	if strict {
+		if err := s3utils.CheckValidBucketNameStrict(bucketEntry); err != nil {
+			return true
+		}
+	} else {
+		if err := s3utils.CheckValidBucketName(bucketEntry); err != nil {
+			return true
+		}
 	}
 	return isMinioMetaBucket(bucketEntry) || isMinioReservedBucket(bucketEntry)
 }
@@ -674,4 +681,55 @@ func CleanMinioInternalMetadataKeys(metadata map[string]string) map[string]strin
 		}
 	}
 	return newMeta
+}
+
+// snappyCompressReader compresses data as it reads
+// from the underlying io.Reader.
+type snappyCompressReader struct {
+	r      io.Reader
+	w      *snappy.Writer
+	closed bool
+	buf    bytes.Buffer
+}
+
+func newSnappyCompressReader(r io.Reader) *snappyCompressReader {
+	cr := &snappyCompressReader{r: r}
+	cr.w = snappy.NewBufferedWriter(&cr.buf)
+	return cr
+}
+
+func (cr *snappyCompressReader) Read(p []byte) (int, error) {
+	if cr.closed {
+		// if snappy writer is closed r has been completely read,
+		// return any remaining data in buf.
+		return cr.buf.Read(p)
+	}
+
+	// read from original using p as buffer
+	nr, readErr := cr.r.Read(p)
+
+	// write read bytes to snappy writer
+	nw, err := cr.w.Write(p[:nr])
+	if err != nil {
+		return 0, err
+	}
+	if nw != nr {
+		return 0, io.ErrShortWrite
+	}
+
+	// if last of data from reader, close snappy writer to flush
+	if readErr == io.EOF {
+		err := cr.w.Close()
+		cr.closed = true
+		if err != nil {
+			return 0, err
+		}
+	}
+
+	// read compressed bytes out of buf
+	n, err := cr.buf.Read(p)
+	if readErr != io.EOF && (err == nil || err == io.EOF) {
+		err = readErr
+	}
+	return n, err
 }
